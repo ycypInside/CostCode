@@ -46,6 +46,9 @@ pre{white-space:pre-wrap;font-size:12px;background:var(--bg);padding:8px;border-
 #formDlg{max-height:92vh;overflow:auto}
 #status{font-size:12px;color:var(--sub);text-align:right;margin:0 4px 6px}
 .proj{cursor:pointer}.proj b{font-size:17px}
+.prog{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;margin:4px 0}.prog i{display:block;height:100%;border-radius:4px}
+.be{fill:var(--exp)}.bi{fill:var(--inc);opacity:.75}.tl{fill:var(--sub);font-size:10px;text-anchor:middle}.tl.on{fill:var(--accent);font-weight:700}
+input[type=search]{-webkit-appearance:none}
 table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right}
 </style>
 </head>
@@ -53,7 +56,8 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
 <main>
   <section id="tab-list">
     <div id="status"></div>
-    <div class="card row">
+    <input id="q" type="search" placeholder="🔍 搜尋備註、分類、專案、發票品項、金額">
+    <div class="card row" id="monthCard">
       <button class="ghost" id="prev">‹</button>
       <input type="month" id="month" class="grow" style="margin:0">
       <button class="ghost" id="next">›</button>
@@ -63,11 +67,14 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
       <div>支出<br><b class="exp" id="sumExp">0</b></div>
       <div>結餘<br><b id="sumNet">0</b></div>
     </div>
+    <div id="budgetMini"></div>
     <div class="card" id="list"></div>
   </section>
 
   <section id="tab-stats" class="hidden">
-    <div class="card"><h2>本月支出分類</h2><div id="catStats"></div></div>
+    <div class="card" id="budgetCard"></div>
+    <div class="card"><h2>近 12 個月收支</h2><div id="trend"></div></div>
+    <div class="card"><h2 id="catTitle">本月支出分類</h2><div id="catStats"></div></div>
   </section>
 
   <section id="tab-projects" class="hidden"><div id="projList"></div></section>
@@ -136,8 +143,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const fmt = n => Math.round(n).toLocaleString('zh-TW');
 const cfg = { url: localStorage.getItem('apiUrl') || '', token: localStorage.getItem('apiToken') || '' };
 
-let D = { tx: [], accounts: [], projects: [], cats: [], items: [] };
-let curMonth = new Date().toISOString().slice(0, 7);
+let D = { tx: [], accounts: [], projects: [], cats: [], items: [], settings: {} };
+let query = '';
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+let curMonth = ymd(new Date()).slice(0, 7);
 let editing = null, viewing = null, parsed = null;
 
 /* ---------- API ---------- */
@@ -175,6 +184,7 @@ async function loadAll() {
     D.cats = data.Categories.map(r => ({ id: String(r[0]), level: Number(r[1]), parent: String(r[2]), kind: r[3], name: r[4], icon: r[5], order: Number(r[6]) }))
                             .sort((a, b) => a.order - b.order);
     D.items = data.ReceiptItems;
+    D.settings = Object.fromEntries((data.Settings || []).map(r => [String(r[0]), r[1]]));
     saveCache(); setStatus('已同步 ' + hhmm(Date.now()));
     render();
   } catch (e) {
@@ -195,28 +205,93 @@ const catLabel = t => [c1(t.class1)?.name, c2(t.class2)?.name].filter(Boolean).j
 /* ---------- 明細 / 統計 ---------- */
 function monthTx() { return D.tx.filter(t => t.date.startsWith(curMonth)).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)); }
 
+const budget = () => Number(D.settings?.monthlyBudget) || 0;
+let itemIdx = {}, itemIdxLen = -1;
+function itemText(inv) {
+  if (itemIdxLen !== D.items.length) { itemIdx = {}; D.items.forEach(r => { const k = String(r[0]); itemIdx[k] = (itemIdx[k] || '') + ' ' + r[4]; }); itemIdxLen = D.items.length; }
+  return itemIdx[inv] || '';
+}
+function searchTx(q) {
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return D.tx.filter(t => {
+    const hay = [t.memo, catLabel(t), projName(t.projectId), accName(t.accountId), t.invoiceId ? itemText(t.invoiceId) : '', t.amount, t.date].join(' ').toLowerCase();
+    return terms.every(w => hay.includes(w));
+  }).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+}
+
+function budgetHtml(spent) {
+  const b = budget();
+  if (!b) return '<div class="sub">尚未設定月預算</div>';
+  const pct = spent / b * 100, remain = b - spent;
+  const color = pct > 100 ? 'var(--exp)' : pct > 80 ? '#f59e0b' : 'var(--inc)';
+  let extra = '';
+  const now = new Date();
+  if (curMonth === ymd(now).slice(0, 7) && remain > 0) {
+    const left = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
+    extra = `，今天起每天可花 ${fmt(remain / left)}`;
+  }
+  return `<div class="row"><span class="grow">月預算 ${fmt(b)}</span><b style="color:${color}">${Math.round(pct)}%</b></div>
+    <div class="prog"><i style="width:${Math.min(pct, 100)}%;background:${color}"></i></div>
+    <div class="sub">已花 ${fmt(spent)}，${remain >= 0 ? '剩 ' + fmt(remain) : '超支 ' + fmt(-remain)}${extra}</div>`;
+}
+
+function renderTrend() {
+  const sums = {};
+  D.tx.forEach(t => { const m = t.date.slice(0, 7); const o = sums[m] ||= { inc: 0, exp: 0 }; o[t.type === 'income' ? 'inc' : 'exp'] += t.amount; });
+  const now = new Date(), months = [];
+  for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(ymd(d).slice(0, 7)); }
+  const max = Math.max(1, ...months.flatMap(m => [sums[m]?.inc || 0, sums[m]?.exp || 0]));
+  const H = 110;
+  const bars = months.map((m, i) => {
+    const o = sums[m] || { inc: 0, exp: 0 }, x = i * 30;
+    const he = o.exp / max * H, hi = o.inc / max * H;
+    return `<g data-month="${m}" style="cursor:pointer"><rect x="${x}" y="0" width="30" height="${H + 22}" fill="transparent"/>
+      <rect class="bi" x="${x + 3}" y="${H - hi}" width="11" height="${hi}" rx="2"/>
+      <rect class="be" x="${x + 15}" y="${H - he}" width="11" height="${he}" rx="2"/>
+      <text class="tl ${m === curMonth ? 'on' : ''}" x="${x + 15}" y="${H + 14}">${Number(m.slice(5))}月</text></g>`;
+  }).join('');
+  const avg = months.reduce((s, m) => s + (sums[m]?.exp || 0), 0) / 12;
+  $('#trend').innerHTML = `<svg viewBox="0 0 360 ${H + 22}" style="width:100%;height:auto">${bars}</svg>
+    <div class="sub"><span class="inc">■</span> 收入　<span class="exp">■</span> 支出　· 近 12 個月平均支出 ${fmt(avg)}／月 · 點月份可跳轉</div>`;
+}
+
 function render() {
   $('#month').value = curMonth;
-  const list = monthTx();
-  const inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const mlist = monthTx();
+  const list = query ? searchTx(query) : mlist;
+  const shown = query ? list.slice(0, 300) : list;
+  const sum = (arr, type) => arr.filter(t => t.type === type).reduce((s, t) => s + t.amount, 0);
+  const inc = sum(list, 'income'), exp = sum(list, 'expense'), mExp = sum(mlist, 'expense');
   $('#sumInc').textContent = fmt(inc); $('#sumExp').textContent = fmt(exp); $('#sumNet').textContent = fmt(inc - exp);
+  $('#monthCard').classList.toggle('hidden', !!query);
+  $('#budgetMini').innerHTML = !query && budget() ? `<div class="card">${budgetHtml(mExp)}</div>` : '';
 
-  let html = '', lastDay = '';
-  for (const t of list) {
+  let html = query ? `<div class="sub">找到 ${list.length} 筆${list.length > 300 ? '（僅顯示前 300 筆）' : ''}</div>` : '', lastDay = '';
+  for (const t of shown) {
     if (t.date !== lastDay) { html += `<div class="day">${t.date}</div>`; lastDay = t.date; }
     html += `<div class="tx" data-uid="${esc(t.uid)}"><div class="ic">${emojiOf(c1(t.class1))}</div><div class="grow"><div>${esc(catLabel(t))}</div><div class="sub">${esc(t.memo)}${t.projectId ? ' · ' + esc(projName(t.projectId)) : ''}</div></div><b class="${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}</b></div>`;
   }
-  $('#list').innerHTML = html || '<div class="sub">這個月沒有紀錄</div>';
+  $('#list').innerHTML = html || `<div class="sub">${query ? '找不到符合的紀錄' : '這個月沒有紀錄'}</div>`;
 
-  // 統計：本月支出分類
+  // 統計
+  $('#catTitle').textContent = curMonth + ' 支出分類';
   const byCat = {};
-  list.filter(t => t.type === 'expense').forEach(t => { const k = (emojiOf(c1(t.class1)) + ' ' + (c1(t.class1)?.name || '未分類')); byCat[k] = (byCat[k] || 0) + t.amount; });
+  mlist.filter(t => t.type === 'expense').forEach(t => { const k = emojiOf(c1(t.class1)) + ' ' + (c1(t.class1)?.name || '未分類'); byCat[k] = (byCat[k] || 0) + t.amount; });
   const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const max = entries[0]?.[1] || 1;
-  $('#catStats').innerHTML = entries.map(([k, v]) => `<div style="margin-bottom:8px"><div class="row"><span class="grow">${esc(k)}</span><b>${fmt(v)}</b></div><div class="bar" style="width:${v / max * 100}%"></div></div>`).join('') || '<div class="sub">沒有資料</div>';
-
+  $('#catStats').innerHTML = entries.map(([k, v]) => `<div style="margin-bottom:8px"><div class="row"><span class="grow">${esc(k)}</span><b>${fmt(v)}</b><span class="sub">${Math.round(v / (mExp || 1) * 100)}%</span></div><div class="bar" style="width:${v / max * 100}%"></div></div>`).join('') || '<div class="sub">沒有資料</div>';
+  $('#budgetCard').innerHTML = `<h2>${curMonth} 預算</h2>${budgetHtml(mExp)}<p style="margin:8px 0 0"><button class="ghost" id="editBudget">${budget() ? '修改預算' : '設定月預算'}</button></p>`;
+  renderTrend();
   renderProjects();
+}
+
+async function editBudget() {
+  const v = prompt('每月預算（輸入 0 取消預算）', budget() || '');
+  if (v === null) return;
+  const n = Number(v);
+  if (isNaN(n) || n < 0) return alert('請輸入數字');
+  try { await api('setSetting', { key: 'monthlyBudget', value: n }); D.settings.monthlyBudget = n; saveCache(); render(); }
+  catch (e) { alert('儲存失敗：' + e.message + '\n（若是 unknown action，請依說明更新 Apps Script 並重新部署）'); }
 }
 
 /* ---------- 新增 / 編輯（快速輸入） ---------- */
@@ -251,7 +326,7 @@ function openForm(t) {
   const lastAcc = t?.accountId || localStorage.getItem('lastAcc') || D.tx.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.accountId;
   if (lastAcc && D.accounts.some(a => a.id === lastAcc)) $('#fAcc').value = lastAcc;
   $('#fProj').value = t?.projectId || '';
-  $('#fDate').value = t?.date || new Date().toISOString().slice(0, 10);
+  $('#fDate').value = t?.date || ymd(new Date());
   $('#fAmount').value = t?.amount ?? '';
   $('#fMemo').value = t?.memo || '';
   renderForm();
@@ -425,11 +500,17 @@ $('#upload').addEventListener('click', async () => {
 });
 
 /* ---------- 事件 / 啟動 ---------- */
-document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  document.querySelectorAll('main > section').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + b.dataset.tab));
-  $('#fab').classList.toggle('hidden', b.dataset.tab !== 'list');
-}));
+function showTab(name) {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === name));
+  document.querySelectorAll('main > section').forEach(sec => sec.classList.toggle('hidden', sec.id !== 'tab-' + name));
+  $('#fab').classList.toggle('hidden', name !== 'list');
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+let qTimer;
+$('#q').addEventListener('input', e => { clearTimeout(qTimer); qTimer = setTimeout(() => { query = e.target.value.trim(); render(); }, 150); });
+$('#budgetCard').addEventListener('click', e => { if (e.target.id === 'editBudget') editBudget(); });
+$('#trend').addEventListener('click', e => { const g = e.target.closest('[data-month]'); if (g) { curMonth = g.dataset.month; $('#q').value = ''; query = ''; render(); showTab('list'); } });
 const shiftMonth = d => { const [y, m] = curMonth.split('-').map(Number); const dt = new Date(y, m - 1 + d, 1); curMonth = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`; render(); };
 $('#prev').onclick = () => shiftMonth(-1); $('#next').onclick = () => shiftMonth(1);
 $('#month').onchange = e => { if (e.target.value) { curMonth = e.target.value; render(); } };
@@ -461,7 +542,7 @@ $('#saveCfg').onclick = async () => {
 $('#cfgUrl').value = cfg.url; $('#cfgToken').value = cfg.token;
 (async () => {
   const c = await cacheGet('data');
-  if (c?.D) { D = c.D; render(); setStatus('顯示上次資料（' + hhmm(c.at) + '），同步中…'); }
+  if (c?.D) { D = c.D; D.settings ||= {}; render(); setStatus('顯示上次資料（' + hhmm(c.at) + '），同步中…'); }
   else render();
   if (cfg.url) loadAll().catch(e => { $('#cfgMsg').textContent = '❌ ' + e.message; });
 })();
