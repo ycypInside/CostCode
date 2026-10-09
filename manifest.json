@@ -1,13 +1,31 @@
 {
-  "name": "記帳",
-  "short_name": "記帳",
-  "start_url": "./",
+  "name": "日用帳",
+  "short_name": "日用帳",
+  "description": "自己的記帳本。資料放在 Google 試算表。",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6f7f9",
-  "theme_color": "#2563eb",
+  "background_color": "#e7e1d6",
+  "theme_color": "#1e4fd7",
+  "lang": "zh-Hant",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }

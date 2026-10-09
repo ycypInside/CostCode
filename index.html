@@ -3,619 +3,2479 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e4fd7">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="記帳">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#2563eb">
-<link rel="apple-touch-icon" href="icon.png">
-<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="apple-mobile-web-app-title" content="日用帳">
+<title>日用帳</title>
 <link rel="manifest" href="manifest.json">
-<title>記帳</title>
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--text:#1c1e21;--sub:#6b7280;--line:#e5e7eb;--accent:#2563eb;--inc:#16a34a;--exp:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1a1d23;--text:#e8eaed;--sub:#9aa0a6;--line:#2a2e36;--accent:#60a5fa;--inc:#4ade80;--exp:#f87171}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC",sans-serif;padding:env(safe-area-inset-top) 0 calc(64px + env(safe-area-inset-bottom))}
-main{max-width:720px;margin:0 auto;padding:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
-h2{font-size:16px;margin:0 0 8px}
-nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1;border:0;background:none;color:var(--sub);padding:12px 0;font-size:14px}
-nav button.on{color:var(--accent);font-weight:600}
-input,select,button,textarea{font:inherit;color:inherit}
-input,select,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);margin:2px 0 8px}
-button.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px}
-button.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
-button.danger{background:var(--exp);color:#fff;border:0;border-radius:8px;padding:9px 14px}
-.row{display:flex;align-items:center;gap:8px}
-.grow{flex:1;min-width:0}
-.sub{color:var(--sub);font-size:13px}
-.inc{color:var(--inc)}.exp{color:var(--exp)}
-.tx{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
-.tx:last-child{border:0}
-.day{font-size:13px;color:var(--sub);padding:8px 0 2px}
-.bar{height:6px;background:var(--accent);border-radius:3px;margin-top:3px;opacity:.7}
-.hidden{display:none}
-dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--text);width:min(92vw,460px);padding:16px}
-dialog::backdrop{background:#0008}
-pre{white-space:pre-wrap;font-size:12px;background:var(--bg);padding:8px;border-radius:8px;max-height:200px;overflow:auto}
-.ic{width:36px;height:36px;border-radius:18px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
-.seg{display:flex;gap:6px;margin-bottom:8px}.seg button{flex:1;padding:8px;border:1px solid var(--line);border-radius:8px;background:none}.seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
-#fAmount{font-size:30px;font-weight:600;text-align:center}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
-.cat{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px;border:1px solid var(--line);border-radius:10px;background:none;font-size:12px}
-.cat span{font-size:22px}.cat.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-.chip{padding:5px 11px;border:1px solid var(--line);border-radius:16px;background:none;font-size:13px}.chip.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
-.lbl{font-size:12px;color:var(--sub);margin:4px 0}
-#formDlg{max-height:92vh;overflow:auto}
-#status{font-size:12px;color:var(--sub);text-align:right;margin:0 4px 6px}
-.proj{cursor:pointer}.proj b{font-size:17px}
-.prog{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;margin:4px 0}.prog i{display:block;height:100%;border-radius:4px}
-.be{fill:var(--exp)}.bi{fill:var(--inc);opacity:.75}.tl{fill:var(--sub);font-size:10px;text-anchor:middle}.tl.on{fill:var(--accent);font-weight:700}
-input[type=search]{-webkit-appearance:none}
-table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right}
+  :root {
+    --bg: #efe7db;
+    --card: #fffdf8;
+    --ink: #221c18;
+    --muted: #6f675f;
+    --faint: #a3988d;
+    --line: #e6ddd1;
+    --blue: #1e4fd7;
+    --blue-ink: #163a9e;
+    --blue-soft: #e7eeff;
+    --expense: #c84b2f;
+    --income: #0c7a58;
+    --danger: #9f2d2d;
+    --shadow: 0 10px 28px rgba(48, 32, 14, 0.06);
+    --nav-h: calc(74px + env(safe-area-inset-bottom));
+    --font: "Noto Sans TC", "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+    --num: "Fraunces", "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    background: #d4cdc2;
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  body.sheet-open { overflow: hidden; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+  #app { width: min(480px, 100%); min-height: 100dvh; margin: 0 auto; background: var(--bg); position: relative; }
+  #topbar {
+    background: var(--blue);
+    color: white;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  #topbar h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .monthline { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; }
+  .monthline h1 { text-align: center; }
+  .monthline button {
+    width: 44px; height: 44px; border: 0; border-radius: 12px;
+    background: rgba(255,255,255,.14); color: white; font-size: 28px; line-height: 1;
+  }
+  .flags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .flags span { font-size: 12px; background: rgba(255,255,255,.16); border-radius: 999px; padding: 3px 8px; }
+  main { padding: 14px 16px calc(var(--nav-h) + 78px); }
+  .hero { padding: 6px 2px 14px; }
+  .eyebrow { margin: 0 0 4px; color: var(--muted); font-size: 13px; font-weight: 700; }
+  .hero-num {
+    margin: 0;
+    font-family: var(--num);
+    font-weight: 560;
+    font-size: clamp(42px, 12vw, 56px);
+    letter-spacing: -0.03em;
+    line-height: .95;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-num.is-empty { color: #c8bfb4; }
+  .hero-num.income { color: var(--income); }
+  .hero-num.expense { color: var(--expense); }
+  .unit { font-family: var(--font); font-size: 16px; margin-left: 6px; color: var(--muted); font-weight: 500; }
+  .subline, .muted { color: var(--muted); }
+  .bad { color: var(--danger); }
+  #form-error:empty, #api-error:empty { display: none; }
+  .search input { width: 100%; margin-bottom: 8px; }
+  input[type="date"]::-webkit-datetime-edit { color: var(--ink); }
+  input:not([type="checkbox"]):not([type="file"]), select, textarea {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: white;
+    font-size: 16px;
+  }
+  textarea { min-height: 72px; resize: vertical; }
+  label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
+  label.check { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 14px; font-weight: 500; }
+  label.check input { width: 18px; height: 18px; margin-top: 2px; }
+  .list-card, .card, .project {
+    background: var(--card);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+  }
+  .list-card { padding: 4px 12px 8px; }
+  .card { padding: 16px; margin: 0 0 12px; }
+  .card h2, .sheet-top h2 { margin: 0; font-size: 18px; }
+  .card p { margin: 0 0 8px; }
+  .dayh { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 13px; padding: 14px 2px 4px; }
+  .tx {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 42px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    text-align: left;
+  }
+  .tx:last-child { border-bottom: 0; }
+  .emoji { width: 42px; height: 42px; border-radius: 14px; background: var(--blue-soft); display: grid; place-items: center; font-size: 20px; }
+  .tx-main { display: flex; flex-direction: column; min-width: 0; }
+  .tx-title { font-weight: 700; }
+  .tx-memo { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .amt.expense { color: var(--expense); }
+  .amt.income { color: var(--income); }
+  .empty { text-align: center; padding: 28px 8px 20px; }
+  .empty p { margin: 0 0 8px; }
+  .primary, .secondary, .danger, .textish { border-radius: 14px; min-height: 48px; font-weight: 700; }
+  .primary, .secondary { width: 100%; border: 0; margin-top: 10px; }
+  .primary { background: var(--blue); color: white; }
+  .primary:disabled { opacity: .55; }
+  .secondary { background: transparent; color: var(--blue-ink); border: 1px solid #c9d4f5; }
+  .danger { display: block; width: 100%; margin-top: 4px; border: 0; background: transparent; color: var(--danger); }
+  .textish { border: 0; background: transparent; color: var(--blue); min-height: 44px; padding: 0 8px; }
+  .banner { background: #fff6df; color: #6a4b12; border-radius: 14px; padding: 10px 12px; margin: 0 0 10px; }
+  .banner.bad { background: #fde8e4; color: #8a2e1b; }
+  .banner button { margin-left: 8px; border: 0; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; min-height: 32px; }
+  .segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: #e4ddd2; border-radius: 14px; }
+  .segment button { border: 0; background: transparent; min-height: 40px; border-radius: 11px; color: var(--muted); font-weight: 700; }
+  .segment button[aria-pressed="true"] { background: white; color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+  .chip { border: 1px solid transparent; background: var(--card); border-radius: 999px; padding: 8px 12px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .cat {
+    border: 1px solid transparent;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 10px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .chip[aria-pressed="true"], .cat[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0 14px; }
+  .pad button { height: 52px; border: 0; border-radius: 14px; background: var(--card); font-size: 22px; font-variant-numeric: tabular-nums; }
+  .pad button:active { background: var(--blue-soft); }
+  .savebar { position: sticky; bottom: 0; padding: 12px 0 4px; background: linear-gradient(transparent, var(--bg) 28%); }
+  .chart { width: 100%; height: auto; display: block; }
+  .legend { display: flex; gap: 16px; color: var(--muted); font-size: 13px; }
+  .dot::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 6px; }
+  .dot.expense::before { background: var(--expense); }
+  .dot.income::before { background: var(--income); }
+  .track, .budget-track { height: 8px; background: #efe8de; border-radius: 99px; overflow: hidden; }
+  .track { margin-top: 4px; }
+  .track > span, .budget-track > span { display: block; height: 100%; background: var(--blue); border-radius: 99px; }
+  .bar-row { margin: 0 0 10px; }
+  .bar-name { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  .budget-track.over > span, .track > span { background: var(--expense); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+  .stat { background: var(--bg); border-radius: 14px; padding: 10px; }
+  .stat span { display: block; color: var(--muted); font-size: 12px; }
+  .project { width: 100%; text-align: left; border: 0; padding: 16px; margin: 0 0 10px; }
+  .project b { display: block; font-size: 18px; margin-bottom: 4px; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .kv span { color: var(--muted); }
+  .kv strong { text-align: right; }
+  .file { position: relative; display: flex; align-items: center; justify-content: center; min-height: 48px; border: 1px dashed #c8bfb4; border-radius: 14px; color: var(--blue-ink); font-weight: 700; margin: 8px 0; }
+  .file input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+  .tokenline { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+  .counts { margin: 8px 0; padding-left: 18px; }
+  .counts li { margin: 4px 0; }
+  .welcome { padding: 8px 2px 24px; }
+  .welcome-title { font-size: 40px; line-height: 1.1; margin: 0 0 8px; }
+  .or { text-align: center; color: var(--muted); margin: 16px 0; }
+  img { max-width: 100%; border-radius: 16px; margin-top: 8px; }
+  #tabbar {
+    position: fixed; z-index: 20; left: 50%; transform: translateX(-50%);
+    width: min(480px, 100%); bottom: 0;
+    background: rgba(255,253,248,.94);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #ver { text-align: center; color: var(--faint); font-size: 10px; padding-top: 4px; }
+  #tabs { display: grid; grid-template-columns: repeat(4, 1fr); }
+  #tabs button {
+    border: 0; background: transparent; color: var(--muted); font-size: 11px;
+    padding: 4px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  #tabs button[aria-current="page"] { color: var(--blue); font-weight: 700; }
+  #fab {
+    position: fixed; z-index: 21;
+    right: max(18px, calc(50vw - 240px + 18px));
+    bottom: calc(var(--nav-h) + 12px);
+    width: 56px; height: 56px; border: 0; border-radius: 18px;
+    background: var(--blue); color: white;
+    display: grid; place-items: center;
+    box-shadow: 0 10px 22px rgba(30, 79, 215, .35);
+  }
+  #sheet { position: fixed; inset: 0; z-index: 30; background: var(--bg); }
+  .sheet-wrap { width: min(480px, 100%); height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
+  .sheet-top { display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 8px 8px; }
+  .ghost { border: 0; background: transparent; color: var(--blue); font-weight: 700; min-height: 44px; padding: 0 10px; }
+  .sheet-body { flex: 1; overflow: auto; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); }
+  #toast {
+    position: fixed; z-index: 40; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--nav-h) + 76px);
+    max-width: min(420px, calc(100% - 32px));
+    background: var(--ink); color: white; border-radius: 999px; padding: 12px 16px;
+    pointer-events: none;
+  }
+  body.sheet-open #toast { display: none !important; }
+  .boot { padding: 24px 16px; }
+  @media (hover: hover) {
+    .tx:hover, .project:hover { background: #fbf7f1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <section id="tab-list">
-    <div id="status"></div>
-    <input id="q" type="search" placeholder="🔍 搜尋備註、分類、專案、發票品項、金額">
-    <div class="card row" id="monthCard">
-      <button class="ghost" id="prev">‹</button>
-      <input type="month" id="month" class="grow" style="margin:0">
-      <button class="ghost" id="next">›</button>
-    </div>
-    <div class="card row" style="justify-content:space-around">
-      <div>收入<br><b class="inc" id="sumInc">0</b></div>
-      <div>支出<br><b class="exp" id="sumExp">0</b></div>
-      <div>結餘<br><b id="sumNet">0</b></div>
-    </div>
-    <div id="budgetMini"></div>
-    <div class="card" id="list"></div>
-  </section>
-
-  <section id="tab-stats" class="hidden">
-    <div class="card" id="budgetCard"></div>
-    <div class="card"><h2>近 12 個月收支</h2><div id="trend"></div></div>
-    <div class="card"><h2 id="catTitle">本月支出分類</h2><div id="catStats"></div></div>
-  </section>
-
-  <section id="tab-projects" class="hidden"><div id="projList"></div></section>
-
-  <section id="tab-settings" class="hidden">
-    <div class="card">
-      <h2>連線設定</h2>
-      <label class="sub">Apps Script 網頁應用程式網址 (結尾為 /exec)</label>
-      <input id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec">
-      <label class="sub">TOKEN（與 Script Properties 中設定的相同）</label>
-      <input id="cfgToken" type="password">
-      <button class="btn" id="saveCfg">儲存並連線</button>
-      <p class="sub" id="cfgMsg"></p>
-    </div>
-    <div class="card"><h2>版本資訊</h2><table id="verTable"></table><p class="sub" id="verMsg"></p>
-      <p class="sub" style="margin:0">版本號 = 檔案產生時間（YYYYMMDD-HHMM，台北時間）</p></div>  
-    <div class="card">
-      <h2>匯入 CostDiary 備份 (.cddb)</h2>
-      <p class="sub">檔案只會在你的瀏覽器中解析，再傳到你自己的 Google Sheet / Drive。</p>
-      <input type="file" id="file">
-      <pre id="importLog">尚未選擇檔案</pre>
-      <label class="row"><input type="checkbox" id="wipe" checked style="width:auto;margin:0"> 上傳前先清空 Sheet 現有資料（避免重複匯入）</label>
-      <p><button class="btn" id="upload" disabled>上傳到 Google Sheet</button></p>
-    </div>
-  </section>
-<div id="foot" class="sub" style="text-align:center;margin:4px 0 12px"></div>
-</main>
-
-<nav>
-  <button data-tab="list" class="on">明細</button>
-  <button data-tab="stats">統計</button>
-  <button data-tab="projects">專案</button>
-  <button data-tab="settings">設定</button>
-</nav>
-<button class="btn" id="fab" style="position:fixed;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:26px;font-size:26px;padding:0">＋</button>
-
-<dialog id="formDlg">
-  <div class="seg"><button type="button" id="fTypeExp">支出</button><button type="button" id="fTypeInc">收入</button></div>
-  <input id="fAmount" type="number" inputmode="decimal" placeholder="0">
-  <div class="lbl" id="fFreqLbl">常用</div><div class="chips" id="fFreq"></div>
-  <div class="lbl">分類</div><div class="grid" id="fGrid"></div>
-  <div class="chips" id="fSub"></div>
-  <input id="fDate" type="date">
-  <select id="fAcc"></select>
-  <select id="fProj"></select>
-  <input id="fMemo" placeholder="備註">
-  <div class="row"><button class="ghost" id="fCancel">取消</button><span class="grow"></span><button class="btn" id="fSave">儲存</button></div>
-</dialog>
-
-<dialog id="projDlg">
-  <div id="projBody"></div>
-  <div class="row" style="margin-top:12px"><span class="grow"></span><button class="ghost" id="pClose">關閉</button></div>
-</dialog>
-
-<dialog id="detailDlg">
-  <div id="detailBody"></div>
-  <div class="row" style="margin-top:12px">
-    <button class="danger" id="dDelete">刪除</button><span class="grow"></span>
-    <button class="ghost" id="dEdit">編輯</button><button class="ghost" id="dClose">關閉</button>
-  </div>
-</dialog>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+<div id="app">
+  <header id="topbar"></header>
+  <main id="view"><p class="boot">正在打開帳本…</p></main>
+  <button id="fab" type="button" aria-label="新增一筆" hidden>
+    <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"/></svg>
+  </button>
+  <nav id="tabbar" hidden>
+    <div id="ver"></div>
+    <div id="tabs"></div>
+  </nav>
+</div>
+<div id="sheet" hidden></div>
+<div id="toast" hidden role="status" aria-live="polite"></div>
 <script>
-// 版本號 = 檔案產生時間 (YYYYMMDD-HHMM, 台北時間)，與 Code.gs 的 BACKEND_VERSION 對照
-const APP_VERSION = '20261009-1204';
-const REQUIRES_BACKEND = '20261009-1204';   // 此版前端至少需要這個版本以上的後端
-const SQLJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/';
-const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = n => Math.round(n).toLocaleString('zh-TW');
-const cfg = { url: localStorage.getItem('apiUrl') || '', token: localStorage.getItem('apiToken') || '' };
+const APP_VERSION = "20261009-1444";
+const REQUIRES_BACKEND = "20261009-1415";
 
-let D = { tx: [], accounts: [], projects: [], cats: [], items: [], settings: {} };
-let query = '';
-const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-let curMonth = ymd(new Date()).slice(0, 7);
-let editing = null, viewing = null, parsed = null;
+/*__PURE_START__*/
+var TX_HEADERS = ["uid", "date", "type", "amount", "accountId", "class1", "class2", "projectId", "memo", "invoiceId", "photoFileId", "createdAt", "modifiedAt"];
+var ACCOUNT_HEADERS = ["id", "name", "currency", "initialBalance", "weeklyBudget", "monthlyBudget", "type", "color"];
+var PROJECT_HEADERS = ["id", "name", "memo", "color", "priority"];
+var CATEGORY_HEADERS = ["id", "level", "parentId", "kind", "name", "icon", "sortOrder"];
+var ITEM_HEADERS = ["invoiceId", "sellerId", "date", "total", "itemName", "price", "count"];
+var IMPORT_CLEAR_SHEETS = ["Transactions", "Accounts", "Projects", "Categories", "ReceiptItems"];
+var BATCH_SIZE = 500;
+var ICON_MAP = {
+  i_class_food: "🍜", i_class_breakfast: "🍳", i_class_lunch: "🍱", i_class_dinner: "🍽️",
+  i_class_drink: "🧋", i_class_coffee: "☕", i_class_snack: "🍪", i_class_fruit: "🍎",
+  i_class_traffic: "🚇", i_class_bus: "🚌", i_class_metro: "🚇", i_class_taxi: "🚕",
+  i_class_train: "🚆", i_class_hsr: "🚄", i_class_fuel: "⛽", i_class_parking: "🅿️",
+  i_class_shopping: "🛍️", i_class_clothes: "👕", i_class_shoe: "👟", i_class_3c: "💻",
+  i_class_digital: "💻", i_class_daily: "🧴", i_class_house: "🏠", i_class_rent: "🏠",
+  i_class_water: "💧", i_class_electric: "💡", i_class_gas: "🔥", i_class_net: "📶",
+  i_class_phone: "📱", i_class_medical: "💊", i_class_sport: "⚽", i_class_entertainment: "🎬",
+  i_class_movie: "🎬", i_class_game: "🎮", i_class_travel: "✈️", i_class_hotel: "🏨",
+  i_class_education: "📚", i_class_book: "📚", i_class_pet: "🐾", i_class_baby: "🍼",
+  i_class_beauty: "💄", i_class_hair: "💇", i_class_gift: "🎁", i_class_social: "🎉",
+  i_class_redpacket: "🧧", i_class_salary: "💰", i_class_bonus: "💸", i_class_invest: "📈",
+  i_class_other: "📦", i_class_insurance: "🛡️", i_class_tax: "🧾", i_class_car: "🚗"
+};
 
-/* ---------- API ---------- */
-async function api(action, payload = {}) {
-  if (!cfg.url) throw new Error('請先到「設定」填入網址');
-  let res;
-  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
-  try {
-    res = await fetch(cfg.url, {
-      method: 'POST', signal: ctl.signal,
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 避免 CORS preflight
-      body: JSON.stringify({ token: cfg.token, action, ...payload })
-    });
-  } catch (e) {
-    const err = new Error('網路無法連線'); err.network = true; throw err;
-  } finally { clearTimeout(timer); }
-  const j = await res.json();
-  if (j.ok) { localStorage.setItem('backendVersion', j.version || 'OLD'); renderVersion(); }   // 舊版後端不會回報 version
-  if (!j.ok) throw new Error(j.error || 'API error');
-  return j;
+function round2(n) {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return 0;
+  return Number(value.toFixed(2));
 }
 
-/* ---------- 離線佇列：連不上網時先存本機，連線後自動補傳 ---------- */
-let queue = [], flushing = false;
-const saveQueue = () => cacheSet('queue', queue);
-const pendingText = () => queue.length ? `待同步 ${queue.length} 筆（連線後自動上傳）` : '';
-async function sendOrQueue(op) {                 // op: {action:'upsertTx', row} | {action:'deleteTx', uid}
-  if (!queue.length) {
-    try { await api(op.action, op); return 'sent'; }
-    catch (e) { if (!e.network) throw e; }
+function decodeSdate(value) {
+  const n = Number(String(value == null ? "" : value).trim());
+  if (!n) return "";
+  const year = Math.floor(n / 10000) + 1900;
+  const month = Math.floor((n % 10000) / 100);
+  const day = n % 100;
+  if (year < 1980 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return year + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+}
+
+function normalizeLooseDate(value) {
+  const match = /^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})/.exec(String(value == null ? "" : value).trim());
+  if (!match) return "";
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return match[1] + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+}
+
+function localISODate(date) {
+  return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+}
+
+function parseISODate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function addDays(date, days) {
+  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function shiftMonth(ym, delta) {
+  const parts = String(ym || "").split("-").map(Number);
+  const date = new Date(parts[0], parts[1] - 1 + delta, 1);
+  return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+}
+
+function monthKeysLast12(today) {
+  const keys = [];
+  for (let i = 11; i >= 0; i--) {
+    const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    keys.push(date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0"));
   }
-  queue.push(op); await saveQueue(); setStatus(pendingText());
-  flushQueue();
-  return 'queued';
+  return keys;
 }
-async function flushQueue() {
-  if (flushing || !queue.length) return;
-  flushing = true;
-  try {
-    while (queue.length) {
-      try { await api(queue[0].action, queue[0]); queue.shift(); await saveQueue(); }
-      catch (e) { setStatus(e.network ? pendingText() : '同步失敗：' + e.message); break; }
-    }
-    if (!queue.length) setStatus('已同步 ' + hhmm(Date.now()));
-  } finally { flushing = false; }
+
+function clampDay(monthKey, day, today) {
+  const parts = monthKey.split("-").map(Number);
+  const dim = new Date(parts[0], parts[1], 0).getDate();
+  let picked = Math.min(Math.max(day, 1), dim);
+  if (localISODate(today).slice(0, 7) === monthKey) picked = Math.min(picked, today.getDate());
+  return monthKey + "-" + String(picked).padStart(2, "0");
 }
-function applyQueue() {                          // 把尚未上傳的變更重新套回剛下載的資料
-  queue.forEach(op => {
-    if (op.action === 'upsertTx') { const t = rowToTx(op.row), i = D.tx.findIndex(x => x.uid === t.uid); if (i >= 0) D.tx[i] = t; else D.tx.push(t); }
-    else if (op.action === 'deleteTx') D.tx = D.tx.filter(x => x.uid !== op.uid);
+
+function taipeiFromUnix(sec) {
+  const n = Number(sec);
+  if (!n) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(n * 1000));
+  const grab = (type) => parts.find((part) => part.type === type).value;
+  return grab("year") + "-" + grab("month") + "-" + grab("day") + " " + grab("hour") + ":" + grab("minute") + ":" + grab("second");
+}
+
+function formatMoney(n) {
+  const value = Number(n) || 0;
+  const negative = value < 0;
+  const abs = Math.abs(value);
+  const hasFrac = Math.abs(abs - Math.round(abs)) > 0.001;
+  const text = abs.toLocaleString("zh-TW", {
+    minimumFractionDigits: hasFrac ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+  return negative ? "-" + text : text;
+}
+
+function weekday(date) {
+  const parsed = parseISODate(date);
+  if (!parsed) return "";
+  return "週" + "日一二三四五六"[parsed.getDay()];
+}
+
+function formatDayLabel(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return date || "未填日期";
+  return Number(date.slice(5, 7)) + "月" + Number(date.slice(8, 10)) + "日";
+}
+
+function monthTitle(ym) {
+  if (!/^\d{4}-\d{2}$/.test(ym || "")) return ym || "";
+  return ym.slice(0, 4) + "年" + Number(ym.slice(5)) + "月";
+}
+
+function isDeleted(value) {
+  return value === 1 || value === true || value === "1";
+}
+
+function normalizeColor(value) {
+  if (value == null || value === "") return "";
+  const text = String(value).trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) return text.toLowerCase();
+  if (/^-?\d+$/.test(text)) return "#" + ((Number(text) >>> 0) & 0xffffff).toString(16).padStart(6, "0");
+  return text;
+}
+
+function versionStatus(backend, required) {
+  if (!backend) return "missing";
+  return String(backend) >= String(required) ? "ok" : "old";
+}
+
+function isAllowedApiUrl(url) {
+  const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)/i.exec(String(url || "").trim());
+  if (!match) return false;
+  const protocol = match[1].toLowerCase();
+  let host = match[2].split("@").pop();
+  if (host.charAt(0) === "[") {
+    const end = host.indexOf("]");
+    host = end > 0 ? host.slice(1, end) : "";
+  } else host = host.replace(/:\d+$/, "");
+  host = host.toLowerCase();
+  if (!host) return false;
+  if (protocol === "https") return true;
+  return protocol === "http" && (host === "localhost" || host === "127.0.0.1" || host === "::1");
+}
+
+function iconFor(icon, name) {
+  const key = String(icon || "");
+  if (ICON_MAP[key]) return ICON_MAP[key];
+  const blob = (key + " " + (name || "")).toLowerCase();
+  const rules = [
+    [/早餐|breakfast/, "🍳"], [/午餐|lunch|便當/, "🍱"], [/晚餐|dinner/, "🍽️"],
+    [/咖啡|coffee/, "☕"], [/飲料|茶|drink/, "🧋"], [/零食|甜|snack/, "🍪"],
+    [/餐|飯|食|food/, "🍜"], [/捷運|地鐵|metro/, "🚇"], [/公車|bus/, "🚌"],
+    [/計程車|taxi/, "🚕"], [/高鐵|hsr/, "🚄"], [/火車|台鐵|train/, "🚆"],
+    [/加油|油料|fuel/, "⛽"], [/停車|parking/, "🅿️"], [/飛機|機票|flight|旅/, "✈️"],
+    [/住宿|飯店|hotel/, "🏨"], [/交通|traffic|transport/, "🚇"], [/衣服|鞋|cloth/, "👕"],
+    [/3c|家電|電腦|digital|手機|phone/, "💻"], [/日用|購物|shop/, "🛍️"],
+    [/房租|租金|rent/, "🏠"], [/水電|水費|電費|electric/, "💡"], [/網路|net/, "📶"],
+    [/居家|家用|house|home/, "🏠"], [/藥|醫|medical/, "💊"], [/電影|movie/, "🎬"],
+    [/遊戲|game/, "🎮"], [/寵物|pet/, "🐾"], [/紅包|禮金|gift/, "🧧"],
+    [/薪|工資|salary|獎金|bonus/, "💰"], [/保險|insur/, "🛡️"], [/書|學|edu/, "📚"],
+    [/運動|sport/, "⚽"], [/娛樂|fun|社交/, "🎉"], [/其他|other/, "📦"]
+  ];
+  for (let i = 0; i < rules.length; i++) if (rules[i][0].test(blob)) return rules[i][1];
+  return "🏷️";
+}
+
+function idOrBlank(value) {
+  if (value == null || value === "" || String(value) === "0") return "";
+  return String(value);
+}
+
+function mapMainRow(row) {
+  if (!row) return { skip: "badId" };
+  if (isDeleted(row.deleted)) return { skip: "deleted" };
+  if (row.transferid != null && String(row.transferid) !== "" && String(row.transferid) !== "0") return { skip: "transfer" };
+  if (row.uid == null || String(row.uid) === "") return { skip: "badId" };
+  const date = decodeSdate(row.sdate);
+  if (!date) return { skip: "badDate" };
+  const created = taipeiFromUnix(row.createtime);
+  const modified = taipeiFromUnix(row.modtime);
+  const photoName = (row.hasphoto === 1 || row.hasphoto === "1" || row.hasphoto === true) && row.photo ? String(row.photo) : "";
+  return {
+    tx: {
+      uid: String(row.uid),
+      date: date,
+      type: String(row.stype) === "0" ? "income" : "expense",
+      amount: round2(Math.abs(Number(row.money) || 0)),
+      accountId: idOrBlank(row.account),
+      class1: idOrBlank(row.class1),
+      class2: idOrBlank(row.class2),
+      projectId: idOrBlank(row.project),
+      memo: row.memo == null ? "" : String(row.memo),
+      invoiceId: idOrBlank(row.invoiceid),
+      photoFileId: "",
+      photoName: photoName,
+      createdAt: created || modified,
+      modifiedAt: modified || created,
+    },
+  };
+}
+
+function currencyCode(list, currencytype) {
+  const raw = currencytype == null ? "" : String(currencytype);
+  const hit = (list || []).find((item) => String(item.uid) === raw);
+  return hit ? String(hit.uid) : (raw || "TWD");
+}
+
+function mapAccount(row, currencies) {
+  if (!row || isDeleted(row.deleted) || row.tid == null || String(row.tid) === "" || String(row.tid) === "0") return null;
+  return {
+    id: String(row.tid),
+    name: String(row.name || "帳戶"),
+    currency: currencyCode(currencies, row.currencytype),
+    initialBalance: round2(row.money),
+    weeklyBudget: round2(row.weeklybudget),
+    monthlyBudget: round2(row.monthlybudget),
+    type: row.type == null ? "" : String(row.type),
+    color: normalizeColor(row.color),
+  };
+}
+
+function mapProject(row) {
+  if (!row || isDeleted(row.deleted) || row.tid == null || String(row.tid) === "" || String(row.tid) === "0") return null;
+  return {
+    id: String(row.tid),
+    name: String(row.name || "專案"),
+    memo: row.memo == null ? "" : String(row.memo),
+    color: normalizeColor(row.color),
+    priority: Number(row.priority) || 0,
+  };
+}
+
+function mapClass1(row) {
+  if (!row || isDeleted(row.deleted) || row.tid == null || String(row.tid) === "" || String(row.tid) === "0") return null;
+  return {
+    id: String(row.tid),
+    level: "1",
+    parentId: "",
+    kind: String(row.type) === "0" ? "income" : "expense",
+    name: String(row.name || ""),
+    icon: String(row.imagename || ""),
+    sortOrder: Number(row.sorder) || 0,
+  };
+}
+
+function mapClass2(row) {
+  if (!row || isDeleted(row.deleted) || row.tid == null || String(row.tid) === "" || String(row.tid) === "0") return null;
+  return {
+    id: String(row.tid),
+    level: "2",
+    parentId: row.parent == null ? "" : String(row.parent),
+    kind: "",
+    name: String(row.name || ""),
+    icon: String(row.imagename || ""),
+    sortOrder: Number(row.sorder) || 0,
+  };
+}
+
+function inheritKind(categories) {
+  const parents = new Map();
+  categories.forEach((cat) => {
+    if (String(cat.level) === "1") parents.set(String(cat.id), cat.kind);
+  });
+  return categories.map((cat) => {
+    if (String(cat.level) !== "2") return cat;
+    return Object.assign({}, cat, { kind: parents.get(String(cat.parentId)) || cat.kind || "expense" });
   });
 }
 
-/* ---------- 版本資訊 ---------- */
-function renderVersion() {
-  const raw = localStorage.getItem('backendVersion') || '';
-  const isOld = raw === 'OLD', be = isOld ? '舊版（未回報版本）' : raw;
-  const el = $('#verTable'); if (!el) return;
-  el.innerHTML = `<tr><td>前端 (index.html)</td><td>${esc(APP_VERSION)}</td></tr>
-    <tr><td>後端 (Code.gs)</td><td>${esc(be || '尚未連線')}</td></tr>
-    <tr><td>前端需要的後端 ≥</td><td>${esc(REQUIRES_BACKEND)}</td></tr>`;
-  let msg = '';
-  if (isOld || (raw && raw < REQUIRES_BACKEND)) msg = '⚠️ 後端不是最新版：請把最新的 Code.gs 貼進 Apps Script，存檔後到「部署 → 管理部署作業 → 編輯 → 新版本 → 部署」（要用原本的部署，網址才不會變）';
-  else if (raw) msg = raw === APP_VERSION ? '✅ 前後端版本一致' : '✅ 後端版本相容';
-  $('#verMsg').textContent = msg;
-  $('#foot').textContent = `前端 v${APP_VERSION} · 後端 ${raw ? (isOld ? '舊版' : 'v' + raw) : '—'}`;
+function bySort(a, b) {
+  return (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0) || String(a.name).localeCompare(String(b.name), "zh-Hant");
 }
 
-const TX_KEYS = ['uid','date','type','amount','accountId','class1','class2','projectId','memo','invoiceId','photoFileId','createdAt','modifiedAt'];
-const txToRow = t => TX_KEYS.map(k => t[k] ?? '');
-const rowToTx = r => Object.fromEntries(TX_KEYS.map((k, i) => [k, k === 'amount' ? Number(r[i]) : String(r[i] ?? '')]));
+function mainCats(data, kind) {
+  return (data.categories || []).filter((cat) => String(cat.level) === "1" && cat.kind === kind).sort(bySort);
+}
 
-/* ---------- 離線快取 (IndexedDB) ---------- */
-const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('expense', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
-async function cacheSet(k, v) { try { const db = await idbOpen(); await new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); } catch {} }
-async function cacheGet(k) { try { const db = await idbOpen(); return await new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); } catch { return undefined; } }
-const saveCache = () => cacheSet('data', { D, at: Date.now() });
-const setStatus = t => { $('#status').textContent = t; };
-const hhmm = ms => new Date(ms).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+function subCats(data, parentId) {
+  return (data.categories || []).filter((cat) => String(cat.level) === "2" && String(cat.parentId) === String(parentId)).sort(bySort);
+}
 
-async function loadAll() {
-  setStatus('同步中…');
+function mapReceipt(invoiceId, text) {
+  const clean = String(text || "").replace(/^\uFEFF/, "").trim();
+  if (!clean) return [];
+  let root;
   try {
-    await flushQueue();
-    const { data } = await api('all');
-    D.tx = data.Transactions.map(rowToTx);
-    D.accounts = data.Accounts.map(r => ({ id: String(r[0]), name: r[1] }));
-    D.projects = data.Projects.map(r => ({ id: String(r[0]), name: r[1] }));
-    D.cats = data.Categories.map(r => ({ id: String(r[0]), level: Number(r[1]), parent: String(r[2]), kind: r[3], name: r[4], icon: r[5], order: Number(r[6]) }))
-                            .sort((a, b) => a.order - b.order);
-    D.items = data.ReceiptItems;
-    D.settings = Object.fromEntries((data.Settings || []).map(r => [String(r[0]), r[1]]));
-    applyQueue();
-    saveCache(); setStatus(queue.length ? pendingText() : '已同步 ' + hhmm(Date.now()));
-    render();
-  } catch (e) {
-    setStatus(queue.length ? pendingText() : D.tx.length ? '離線中，顯示上次同步的資料' : '連線失敗');
-    throw e;
+    root = JSON.parse(clean);
+  } catch (error) {
+    const invalid = new Error("發票檔不是 JSON");
+    invalid.code = "invalid-json";
+    throw invalid;
   }
+  if (!root || typeof root !== "object") return [];
+  const body = root.data && typeof root.data === "object" ? root.data : root;
+  const sellerId = String(body.sellerBan || body.sellerId || body.ban || "");
+  const total = round2(body.amount != null ? body.amount : (body.total != null ? body.total : body.totalAmount));
+  let date = "";
+  [body.date, body.invDate, body.invoiceDate].some((value) => {
+    if (value == null || value === "") return false;
+    const digits = String(value).trim();
+    if (/^\d{6,8}$/.test(digits)) date = decodeSdate(digits);
+    if (!date) date = normalizeLooseDate(value);
+    return !!date;
+  });
+  const list = body.shopping_list || body.shoppingList || body.details || body.items || [];
+  if (!Array.isArray(list)) return [];
+  return list.filter((item) => item && typeof item === "object").map((item) => ({
+    invoiceId: String(invoiceId),
+    sellerId: sellerId,
+    date: date,
+    total: total,
+    itemName: String(item.itemName || item.name || item.description || item.title || item.item || "品項"),
+    price: round2(item.price != null ? item.price : (item.unitPrice != null ? item.unitPrice : item.amount)),
+    count: round2(item.count != null ? item.count : (item.quantity != null ? item.quantity : item.qty)) || 1,
+  }));
 }
 
-/* ---------- 查表 ---------- */
-const c1 = id => D.cats.find(c => c.level === 1 && c.id === String(id));
-const c2 = id => D.cats.find(c => c.level === 2 && c.id === String(id));
-const accName = id => D.accounts.find(a => a.id === String(id))?.name ?? '';
-const projName = id => D.projects.find(p => p.id === String(id))?.name ?? '';
-const ICONS = { i_class_finance: '💰', i_class_stock: '📈', i_class_food: '🍜', i_class_bus: '🚌', i_class_book: '📚', i_class_tshirt: '👕', i_class_game: '🎮', i_class_fine: '🧾', i_class_house: '🏠', i_class_gas: '⛽', i_class_health: '🏥', i_class_travel: '✈️', i_class_coin: '🪙', i_class_pet: '🐾', i_class_education: '🎓', i_class_gift: '🎁', i_class_mobile: '📱', i_class_office: '💼' };
-const emojiOf = cat => ICONS[cat?.icon] || '🏷️';
-const catLabel = t => [c1(t.class1)?.name, c2(t.class2)?.name].filter(Boolean).join(' › ') || '未分類';
-
-/* ---------- 明細 / 統計 ---------- */
-function monthTx() { return D.tx.filter(t => t.date.startsWith(curMonth)).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)); }
-
-const budget = () => Number(D.settings?.monthlyBudget) || 0;
-let itemIdx = {}, itemIdxLen = -1;
-function itemText(inv) {
-  if (itemIdxLen !== D.items.length) { itemIdx = {}; D.items.forEach(r => { const k = String(r[0]); itemIdx[k] = (itemIdx[k] || '') + ' ' + r[4]; }); itemIdxLen = D.items.length; }
-  return itemIdx[inv] || '';
-}
-function searchTx(q) {
-  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-  return D.tx.filter(t => {
-    const hay = [t.memo, catLabel(t), projName(t.projectId), accName(t.accountId), t.invoiceId ? itemText(t.invoiceId) : '', t.amount, t.date].join(' ').toLowerCase();
-    return terms.every(w => hay.includes(w));
-  }).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+function receiptPathId(path) {
+  const match = /invoice\/receipt\/([^/]+)\.raw$/i.exec(String(path || "").replace(/\\/g, "/"));
+  return match ? match[1] : "";
 }
 
-function budgetHtml(spent) {
-  const b = budget();
-  if (!b) return '<div class="sub">尚未設定月預算</div>';
-  const pct = spent / b * 100, remain = b - spent;
-  const color = pct > 100 ? 'var(--exp)' : pct > 80 ? '#f59e0b' : 'var(--inc)';
-  let extra = '';
-  const now = new Date();
-  if (curMonth === ymd(now).slice(0, 7) && remain > 0) {
-    const left = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
-    extra = `，今天起每天可花 ${fmt(remain / left)}`;
+function planPhotos(paths, txs) {
+  const files = (paths || []).filter((path) => /\/images\/.+\.(jpe?g|png)$/i.test(path) && !/-min\.(jpe?g|png)$/i.test(path));
+  return (txs || []).filter((tx) => tx.photoName).map((tx) => {
+    const path = files.find((item) => item.endsWith("/" + tx.photoName) || item.endsWith(tx.photoName)) || "";
+    return { uid: tx.uid, path: path, name: tx.photoName, missing: !path };
+  });
+}
+
+function publicTx(tx) {
+  const row = {};
+  TX_HEADERS.forEach((header) => {
+    if (header === "amount") row.amount = round2(Math.abs(Number(tx && tx.amount) || 0));
+    else row[header] = !tx || tx[header] == null ? "" : String(tx[header]);
+  });
+  row.type = tx && tx.type === "income" ? "income" : "expense";
+  return row;
+}
+
+function txToRow(tx) {
+  const row = publicTx(tx);
+  return TX_HEADERS.map((header) => row[header]);
+}
+
+function accountToRow(account) {
+  return [String(account.id), String(account.name || ""), String(account.currency || "TWD"), round2(account.initialBalance), round2(account.weeklyBudget), round2(account.monthlyBudget), account.type == null ? "" : String(account.type), account.color == null ? "" : String(account.color)];
+}
+
+function projectToRow(project) {
+  return [String(project.id), String(project.name || ""), project.memo == null ? "" : String(project.memo), project.color == null ? "" : String(project.color), Number(project.priority) || 0];
+}
+
+function categoryToRow(category) {
+  return [String(category.id), String(category.level), category.parentId == null ? "" : String(category.parentId), category.kind === "income" ? "income" : "expense", String(category.name || ""), String(category.icon || ""), Number(category.sortOrder) || 0];
+}
+
+function itemToRow(item) {
+  return [String(item.invoiceId || ""), String(item.sellerId || ""), String(item.date || ""), round2(item.total), String(item.itemName || ""), round2(item.price), round2(item.count) || 0];
+}
+
+function emptyData() {
+  return { transactions: [], accounts: [], projects: [], categories: [], receiptItems: [], settings: {} };
+}
+
+function normalizeTx(tx) {
+  const row = publicTx(tx || {});
+  row.date = String((tx && tx.date) || "").slice(0, 10);
+  row.type = tx && tx.type === "income" ? "income" : "expense";
+  row.amount = round2(Math.abs(Number(tx && tx.amount) || 0));
+  return row;
+}
+
+function normalizeData(raw) {
+  const data = emptyData();
+  const source = raw || {};
+  const list = (value) => Array.isArray(value) ? value : [];
+  data.transactions = list(source.transactions).map(normalizeTx).filter((tx) => tx.uid);
+  data.accounts = list(source.accounts).map((account) => ({
+    id: account.id == null ? "" : String(account.id),
+    name: String(account.name || ""),
+    currency: String(account.currency || "TWD"),
+    initialBalance: round2(account.initialBalance),
+    weeklyBudget: round2(account.weeklyBudget),
+    monthlyBudget: round2(account.monthlyBudget),
+    type: account.type == null ? "" : String(account.type),
+    color: account.color == null ? "" : String(account.color),
+  })).filter((account) => account.id);
+  data.projects = list(source.projects).map((project) => ({
+    id: project.id == null ? "" : String(project.id),
+    name: String(project.name || ""),
+    memo: project.memo == null ? "" : String(project.memo),
+    color: project.color == null ? "" : String(project.color),
+    priority: Number(project.priority) || 0,
+  })).filter((project) => project.id && project.id !== "0");
+  data.categories = list(source.categories).map((cat) => ({
+    id: cat.id == null ? "" : String(cat.id),
+    level: String(cat.level == null ? "" : cat.level),
+    parentId: cat.parentId == null || String(cat.parentId) === "0" ? "" : String(cat.parentId),
+    kind: cat.kind === "income" ? "income" : "expense",
+    name: cat.name == null ? "" : String(cat.name),
+    icon: cat.icon == null ? "" : String(cat.icon),
+    sortOrder: Number(cat.sortOrder) || 0,
+  })).filter((cat) => cat.id);
+  data.receiptItems = list(source.receiptItems).map((item) => ({
+    invoiceId: item.invoiceId == null ? "" : String(item.invoiceId),
+    sellerId: item.sellerId == null ? "" : String(item.sellerId),
+    date: String(item.date || "").slice(0, 10),
+    total: round2(item.total),
+    itemName: item.itemName == null ? "" : String(item.itemName),
+    price: round2(item.price),
+    count: round2(item.count) || 0,
+  })).filter((item) => item.invoiceId);
+  const settings = source.settings && typeof source.settings === "object" && !Array.isArray(source.settings) ? source.settings : {};
+  Object.keys(settings).forEach((key) => {
+    data.settings[key] = settings[key] == null ? "" : String(settings[key]);
+  });
+  return data;
+}
+
+function applyOp(data, op) {
+  if (!op) return data;
+  if (op.op === "upsertTx" && op.row) {
+    const row = publicTx(op.row);
+    const index = data.transactions.findIndex((tx) => tx.uid === row.uid);
+    if (index >= 0) data.transactions[index] = row;
+    else data.transactions.push(row);
+  } else if (op.op === "deleteTx") {
+    data.transactions = data.transactions.filter((tx) => tx.uid !== String(op.uid));
+  } else if (op.op === "setSetting" && op.key) {
+    data.settings = Object.assign({}, data.settings, { [op.key]: op.value == null ? "" : String(op.value) });
   }
-  return `<div class="row"><span class="grow">月預算 ${fmt(b)}</span><b style="color:${color}">${Math.round(pct)}%</b></div>
-    <div class="prog"><i style="width:${Math.min(pct, 100)}%;background:${color}"></i></div>
-    <div class="sub">已花 ${fmt(spent)}，${remain >= 0 ? '剩 ' + fmt(remain) : '超支 ' + fmt(-remain)}${extra}</div>`;
+  return data;
 }
 
-function renderTrend() {
-  const sums = {};
-  D.tx.forEach(t => { const m = t.date.slice(0, 7); const o = sums[m] ||= { inc: 0, exp: 0 }; o[t.type === 'income' ? 'inc' : 'exp'] += t.amount; });
-  const now = new Date(), months = [];
-  for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(ymd(d).slice(0, 7)); }
-  const max = Math.max(1, ...months.flatMap(m => [sums[m]?.inc || 0, sums[m]?.exp || 0]));
-  const H = 110;
-  const bars = months.map((m, i) => {
-    const o = sums[m] || { inc: 0, exp: 0 }, x = i * 30;
-    const he = o.exp / max * H, hi = o.inc / max * H;
-    return `<g data-month="${m}" style="cursor:pointer"><rect x="${x}" y="0" width="30" height="${H + 22}" fill="transparent"/>
-      <rect class="bi" x="${x + 3}" y="${H - hi}" width="11" height="${hi}" rx="2"/>
-      <rect class="be" x="${x + 15}" y="${H - he}" width="11" height="${he}" rx="2"/>
-      <text class="tl ${m === curMonth ? 'on' : ''}" x="${x + 15}" y="${H + 14}">${Number(m.slice(5))}月</text></g>`;
-  }).join('');
-  const avg = months.reduce((s, m) => s + (sums[m]?.exp || 0), 0) / 12;
-  $('#trend').innerHTML = `<svg viewBox="0 0 360 ${H + 22}" style="width:100%;height:auto">${bars}</svg>
-    <div class="sub"><span class="inc">■</span> 收入　<span class="exp">■</span> 支出　· 近 12 個月平均支出 ${fmt(avg)}／月 · 點月份可跳轉</div>`;
+function findById(list, id) {
+  if (id == null || id === "") return null;
+  return (list || []).find((item) => String(item.id) === String(id)) || null;
+}
+
+function txTitle(data, tx) {
+  const sub = findById(data.categories, tx.class2);
+  const main = findById(data.categories, tx.class1);
+  return (sub && sub.name) || (main && main.name) || "未分類";
+}
+
+function txEmoji(data, tx) {
+  const sub = findById(data.categories, tx.class2);
+  const main = findById(data.categories, tx.class1);
+  const cat = sub || main;
+  return iconFor(cat && cat.icon, ((sub && sub.name) || "") + " " + ((main && main.name) || ""));
+}
+
+function searchTransactions(data, query) {
+  const terms = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean).map((term) => term.replace(/,/g, ""));
+  if (!terms.length) return (data.transactions || []).slice();
+  const items = new Map();
+  (data.receiptItems || []).forEach((item) => {
+    const id = String(item.invoiceId || "");
+    if (!id) return;
+    const list = items.get(id) || [];
+    list.push(String(item.itemName || ""));
+    items.set(id, list);
+  });
+  return data.transactions.filter((tx) => {
+    const hay = [
+      tx.memo, tx.amount, tx.date, tx.invoiceId,
+      (findById(data.categories, tx.class1) || {}).name,
+      (findById(data.categories, tx.class2) || {}).name,
+      (findById(data.projects, tx.projectId) || {}).name,
+      (findById(data.accounts, tx.accountId) || {}).name,
+      (items.get(String(tx.invoiceId || "")) || []).join(" "),
+    ].join("\n").toLowerCase().replace(/,/g, "");
+    return terms.every((term) => hay.includes(term));
+  });
+}
+
+function searchLimited(data, query, limit) {
+  const all = searchTransactions(data, query);
+  const max = limit == null ? 300 : limit;
+  return { rows: all.slice(0, max), total: all.length, truncated: all.length > max };
+}
+
+function budgetStatus(spent, budget, today) {
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const dim = new Date(year, month, 0).getDate();
+  const daysLeft = dim - today.getDate() + 1;
+  const saved = Number(budget) || 0;
+  const used = Number(spent) || 0;
+  const remaining = saved - used;
+  return {
+    year: year, month: month, dim: dim, day: today.getDate(), daysLeft: daysLeft,
+    spent: used, budget: saved, remaining: remaining,
+    perDay: daysLeft > 0 ? remaining / daysLeft : remaining,
+    ratio: saved > 0 ? used / saved : 0,
+    over: saved > 0 && used > saved,
+  };
+}
+
+function sumMonth(txs, key, type) {
+  let total = 0;
+  (txs || []).forEach((tx) => {
+    if (tx.type !== type || !tx.date || String(tx.date).slice(0, 7) !== key) return;
+    total += Number(tx.amount) || 0;
+  });
+  return round2(total);
+}
+
+function frequentPairs(data, kind, today, days) {
+  const from = localISODate(addDays(today, -(days == null ? 120 : days)));
+  const counts = new Map();
+  (data.transactions || []).forEach((tx) => {
+    if (tx.type !== kind || !tx.date || tx.date < from) return;
+    const key = String(tx.class1 || "") + "|" + String(tx.class2 || "");
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 6);
+}
+
+function projectStats(data, projectId) {
+  const txs = (data.transactions || []).filter((tx) => String(tx.projectId) === String(projectId));
+  const total = round2(txs.filter((tx) => tx.type === "expense").reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0));
+  const dates = [...new Set(txs.map((tx) => tx.date).filter(Boolean))].sort();
+  const start = dates[0] || "";
+  const end = dates[dates.length - 1] || "";
+  let calendarDays = 0;
+  if (start && end) calendarDays = Math.round((parseISODate(end) - parseISODate(start)) / 86400000) + 1;
+  const bookedDays = dates.length;
+  return { txs: txs, total: total, count: txs.length, start: start, end: end, calendarDays: calendarDays, bookedDays: bookedDays, avg: bookedDays ? total / bookedDays : 0 };
+}
+
+function categoryBreakdown(data, txs, kind) {
+  const map = new Map();
+  (txs || []).forEach((tx) => {
+    if (kind && tx.type !== kind) return;
+    const id = String(tx.class1 || "");
+    const cat = findById(data.categories, id);
+    const current = map.get(id) || { id: id, name: cat ? cat.name : "未分類", amount: 0 };
+    current.amount = round2(current.amount + (Number(tx.amount) || 0));
+    map.set(id, current);
+  });
+  return [...map.values()].sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), "zh-Hant"));
+}
+
+function groupByDate(txs) {
+  const sorted = txs.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.modifiedAt || "").localeCompare(String(a.modifiedAt || "")) || String(b.uid).localeCompare(String(a.uid)));
+  const groups = [];
+  const map = new Map();
+  sorted.forEach((tx) => {
+    const key = tx.date || "未填日期";
+    let group = map.get(key);
+    if (!group) {
+      group = { date: key, items: [], expense: 0, income: 0 };
+      map.set(key, group);
+      groups.push(group);
+    }
+    group.items.push(tx);
+    if (tx.type === "income") group.income = round2(group.income + Number(tx.amount || 0));
+    else group.expense = round2(group.expense + Number(tx.amount || 0));
+  });
+  return groups;
+}
+
+function batches(items, size) {
+  const out = [];
+  const step = size > 0 ? size : BATCH_SIZE;
+  for (let i = 0; i < items.length; i += step) out.push(items.slice(i, i + step));
+  return out;
+}
+
+function accountNet(data, accountId) {
+  let net = 0;
+  (data.transactions || []).forEach((tx) => {
+    if (String(tx.accountId) !== String(accountId)) return;
+    net += tx.type === "income" ? Number(tx.amount) || 0 : -(Number(tx.amount) || 0);
+  });
+  return round2(net);
+}
+
+function starterData() {
+  const data = emptyData();
+  data.accounts.push({ id: "cash", name: "現金", currency: "TWD", initialBalance: 0, weeklyBudget: 0, monthlyBudget: 0, type: "cash", color: "" });
+  [
+    ["food", "1", "", "expense", "飲食", "i_class_food", 1],
+    ["breakfast", "2", "food", "expense", "早餐", "i_class_breakfast", 1],
+    ["lunch", "2", "food", "expense", "午餐", "i_class_lunch", 2],
+    ["dinner", "2", "food", "expense", "晚餐", "i_class_dinner", 3],
+    ["drink", "2", "food", "expense", "飲料", "i_class_drink", 4],
+    ["traffic", "1", "", "expense", "交通", "i_class_traffic", 2],
+    ["mrt", "2", "traffic", "expense", "捷運", "i_class_metro", 1],
+    ["bus", "2", "traffic", "expense", "公車", "i_class_bus", 2],
+    ["taxi", "2", "traffic", "expense", "計程車", "i_class_taxi", 3],
+    ["shopping", "1", "", "expense", "購物", "i_class_shopping", 3],
+    ["daily", "2", "shopping", "expense", "日用品", "i_class_daily", 1],
+    ["home", "1", "", "expense", "居家", "i_class_house", 4],
+    ["rent", "2", "home", "expense", "房租", "i_class_rent", 1],
+    ["util", "2", "home", "expense", "水電", "i_class_electric", 2],
+    ["fun", "1", "", "expense", "娛樂", "i_class_entertainment", 5],
+    ["medical", "1", "", "expense", "醫療", "i_class_medical", 6],
+    ["other", "1", "", "expense", "其他", "i_class_other", 7],
+    ["salary", "1", "", "income", "薪資", "i_class_salary", 1],
+    ["pay", "2", "salary", "income", "薪水", "i_class_salary", 1],
+    ["bonus", "2", "salary", "income", "獎金", "i_class_bonus", 2],
+    ["other-in", "1", "", "income", "其他收入", "i_class_gift", 2],
+    ["red", "2", "other-in", "income", "紅包", "i_class_redpacket", 1],
+  ].forEach((row) => {
+    data.categories.push({ id: row[0], level: row[1], parentId: row[2], kind: row[3], name: row[4], icon: row[5], sortOrder: row[6] });
+  });
+  return data;
+}
+
+function buildDemo(today) {
+  const data = starterData();
+  data.settings.monthlyBudget = "20000";
+  data.settings.demo = "1";
+  data.projects.push({ id: "p-hualien", name: "花蓮兩天", memo: "範例旅遊。出發前的車票也算進這個專案。", color: "#1e4fd7", priority: 1 });
+  const current = localISODate(today).slice(0, 7);
+  function makeTx(uid, date, type, amount, class1, class2, extra) {
+    return Object.assign({
+      uid: uid, date: date, type: type, amount: amount, accountId: "cash", class1: class1, class2: class2,
+      projectId: "", memo: "", invoiceId: "", photoFileId: "", createdAt: date + " 12:00:00", modifiedAt: date + " 12:00:00",
+    }, extra || {});
+  }
+  monthKeysLast12(today).forEach((key, index) => {
+    if (key === current) return;
+    data.transactions.push(makeTx("d" + key + "l", clampDay(key, 8, today), "expense", 120 + index * 18, "food", "lunch", { memo: "午餐" }));
+    data.transactions.push(makeTx("d" + key + "m", clampDay(key, 8, today), "expense", 35 + (index % 4) * 5, "traffic", "mrt", {}));
+    if (index % 3 === 0) data.transactions.push(makeTx("d" + key + "s", clampDay(key, 5, today), "income", 48000 + index * 100, "salary", "pay", { memo: "薪水" }));
+  });
+  data.transactions.push(makeTx("d-early", shiftMonth(current, -1) + "-28", "expense", 520, "traffic", "mrt", { memo: "出發前買的車票", projectId: "p-hualien" }));
+  data.transactions.push(makeTx("d-stay", clampDay(current, 3, today), "expense", 2400, "fun", "", { memo: "花蓮民宿", projectId: "p-hualien" }));
+  data.transactions.push(makeTx("d-train", clampDay(current, 4, today), "expense", 860, "traffic", "mrt", { memo: "台鐵", projectId: "p-hualien" }));
+  data.transactions.push(makeTx("d-rent", clampDay(current, 1, today), "expense", 12000, "home", "rent", { memo: "房租" }));
+  data.transactions.push(makeTx("d-noodle", clampDay(current, 8, today), "expense", 180, "food", "lunch", { memo: "牛肉麵", invoiceId: "demo-inv-1" }));
+  data.transactions.push(makeTx("d-coffee", clampDay(current, today.getDate(), today), "expense", 65, "food", "drink", { memo: "咖啡" }));
+  data.transactions.push(makeTx("d-pay", clampDay(current, 5, today), "income", 52000, "salary", "pay", { memo: "薪水" }));
+  const noodleDate = clampDay(current, 8, today);
+  data.receiptItems.push(
+    { invoiceId: "demo-inv-1", sellerId: "12345678", date: noodleDate, total: 180, itemName: "牛肉麵", price: 150, count: 1 },
+    { invoiceId: "demo-inv-1", sellerId: "12345678", date: noodleDate, total: 180, itemName: "紅茶", price: 30, count: 1 }
+  );
+  return data;
+}
+
+if (typeof window === "undefined") {
+  this.__test = {
+    decodeSdate, normalizeLooseDate, localISODate, addDays, shiftMonth, monthKeysLast12, clampDay,
+    taipeiFromUnix, formatMoney, round2, isDeleted, normalizeColor, versionStatus, isAllowedApiUrl, iconFor, weekday,
+    formatDayLabel, monthTitle, TX_HEADERS, ACCOUNT_HEADERS, PROJECT_HEADERS, CATEGORY_HEADERS, ITEM_HEADERS,
+    IMPORT_CLEAR_SHEETS, txToRow, accountToRow, projectToRow, categoryToRow, itemToRow, publicTx,
+    mapMainRow, mapAccount, mapProject, mapClass1, mapClass2, inheritKind, mapReceipt, currencyCode,
+    emptyData, applyOp, normalizeData, searchTransactions, searchLimited, budgetStatus, sumMonth,
+    frequentPairs, projectStats, categoryBreakdown, groupByDate, planPhotos, receiptPathId,
+    starterData, buildDemo, batches, mainCats, subCats,
+  };
+}
+/*__PURE_END__*/
+
+const CP_KEY = "ledgerImportCheckpoint";
+const state = {
+  tab: "ledger",
+  month: "",
+  query: "",
+  data: emptyData(),
+  mode: "unset",
+  online: navigator.onLine,
+  syncing: false,
+  pending: 0,
+  backendVersion: "",
+  loadError: "",
+  overlay: null,
+  form: null,
+  booting: true,
+  statsKind: "expense",
+  budgetDraft: null,
+};
+const importUi = { phase: "idle", message: "", error: "", summary: null, resume: false, fileName: "" };
+let importBundle = null;
+let dbPromise = null;
+let libPromise = null;
+let toastTimer = 0;
+let paintedOverlay = "";
+
+function el(tag, attrs) {
+  const node = document.createElement(tag);
+  const children = Array.prototype.slice.call(arguments, 2);
+  if (attrs) {
+    Object.keys(attrs).forEach((key) => {
+      const value = attrs[key];
+      if (value == null || value === false) return;
+      if (key === "class") node.className = value;
+      else if (key.indexOf("on") === 0 && typeof value === "function") node.addEventListener(key.slice(2).toLowerCase(), value);
+      else node.setAttribute(key, value === true ? "" : String(value));
+    });
+  }
+  children.flat(2).forEach((child) => {
+    if (child == null || child === false) return;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  });
+  return node;
+}
+
+function svgEl(tag, attrs) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  const children = Array.prototype.slice.call(arguments, 2);
+  Object.keys(attrs || {}).forEach((key) => {
+    if (attrs[key] != null) node.setAttribute(key, String(attrs[key]));
+  });
+  children.flat(2).forEach((child) => {
+    if (child == null || child === false) return;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  });
+  return node;
+}
+
+function tabIcon(name) {
+  const paths = {
+    ledger: "M6 4h12v16H6z M9 8h6 M9 12h6 M9 16h4",
+    stats: "M5 19V9 M12 19V5 M19 19v-7",
+    projects: "M4 7h7l2 2h7v10H4z",
+    settings: "M4 7h16 M4 12h16 M4 17h16",
+  };
+  return svgEl("svg", { viewBox: "0 0 24 24", width: "22", height: "22", "aria-hidden": "true" },
+    svgEl("path", { d: paths[name], fill: "none", stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+}
+
+function toast(message) {
+  const node = document.getElementById("toast");
+  if (!node) return;
+  node.hidden = false;
+  node.textContent = message;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { node.hidden = true; }, 2800);
+}
+
+function go(fn) {
+  return function () {
+    return Promise.resolve(fn()).catch((error) => toast(messageOf(error)));
+  };
+}
+
+function messageOf(error) {
+  if (!error) return "發生錯誤";
+  if (error.name === "AbortError") return "連線逾時，請再試一次";
+  const text = error.message || String(error);
+  if (error.name === "TypeError" || text.indexOf("Failed to fetch") >= 0) return "連不上後端";
+  return text;
+}
+
+function footerText() {
+  const status = state.mode === "cloud" ? versionStatus(state.backendVersion, REQUIRES_BACKEND) : "local";
+  const backend = state.backendVersion ? "v" + state.backendVersion : (state.mode === "cloud" ? "未回報" : "未連線");
+  const mark = state.mode === "cloud" && status !== "ok" ? " ⚠️" : "";
+  return "前端 v" + APP_VERSION + " · 後端 " + backend + mark;
+}
+
+function paintFooter() {
+  const text = footerText();
+  const ver = document.getElementById("ver");
+  if (ver) ver.textContent = text;
+  const welcome = document.getElementById("welcome-ver");
+  if (welcome) welcome.textContent = text;
+}
+
+function renderChrome() {
+  if (!state.month) state.month = localISODate(new Date()).slice(0, 7);
+  const bar = document.getElementById("topbar");
+  bar.replaceChildren();
+  if (state.mode !== "unset" && state.tab === "ledger") {
+    bar.append(el("div", { class: "monthline" },
+      el("button", { type: "button", id: "month-prev", "aria-label": "上個月" }, "‹"),
+      el("h1", {}, monthTitle(state.month)),
+      el("button", { type: "button", id: "month-next", "aria-label": "下個月" }, "›")));
+  } else {
+    const titles = { ledger: "明細", stats: "統計", projects: "專案", settings: "設定" };
+    bar.append(el("h1", {}, state.mode === "unset" ? "日用帳" : titles[state.tab]));
+  }
+  const flags = el("div", { class: "flags" });
+  if (state.syncing) flags.append(el("span", {}, "同步中"));
+  if (state.mode === "cloud" && !state.online) flags.append(el("span", {}, "離線"));
+  if (state.pending) flags.append(el("span", {}, state.pending + " 筆待上傳"));
+  if (flags.childNodes.length) bar.append(flags);
+  const tabs = document.getElementById("tabs");
+  tabs.replaceChildren.apply(tabs, [["ledger", "明細"], ["stats", "統計"], ["projects", "專案"], ["settings", "設定"]].map((item) => {
+    const attrs = { type: "button", "data-tab": item[0] };
+    if (state.tab === item[0]) attrs["aria-current"] = "page";
+    return el("button", attrs, tabIcon(item[0]), el("span", {}, item[1]));
+  }));
+  document.getElementById("tabbar").hidden = state.mode === "unset";
+  document.getElementById("fab").hidden = state.mode === "unset" || state.tab === "settings" || !!state.overlay;
+  document.body.classList.toggle("sheet-open", !!state.overlay);
+  paintFooter();
+}
+
+function renderBanners() {
+  const box = el("div", {});
+  if (state.mode === "cloud" && !state.online) box.append(el("div", { class: "banner" }, "沒有網路。新的增刪改會先留在這台手機，連線後再上傳。"));
+  if (state.pending) {
+    box.append(el("div", { class: "banner" }, state.pending + " 筆還沒上傳。",
+      el("button", { type: "button", onClick: go(refreshCloud) }, "立即上傳")));
+  }
+  if (state.loadError) {
+    box.append(el("div", { class: "banner bad" }, state.loadError,
+      state.mode === "cloud" ? el("button", { type: "button", onClick: go(refreshCloud) }, "重試") : null));
+  }
+  if (String(state.data.settings.demo) === "1" && state.mode === "local") box.append(el("div", { class: "banner" }, "這是範例帳，只存在這台手機。"));
+  return box;
+}
+
+function overlayKey() {
+  if (!state.overlay) return "";
+  if (state.overlay.type === "form") return "form:" + ((state.form && state.form.uid) || "new");
+  if (state.overlay.type === "detail") return "detail:" + state.overlay.uid;
+  return "project:" + state.overlay.id;
 }
 
 function render() {
-  $('#month').value = curMonth;
-  const mlist = monthTx();
-  const list = query ? searchTx(query) : mlist;
-  const shown = query ? list.slice(0, 300) : list;
-  const sum = (arr, type) => arr.filter(t => t.type === type).reduce((s, t) => s + t.amount, 0);
-  const inc = sum(list, 'income'), exp = sum(list, 'expense'), mExp = sum(mlist, 'expense');
-  $('#sumInc').textContent = fmt(inc); $('#sumExp').textContent = fmt(exp); $('#sumNet').textContent = fmt(inc - exp);
-  $('#monthCard').classList.toggle('hidden', !!query);
-  $('#budgetMini').innerHTML = !query && budget() ? `<div class="card">${budgetHtml(mExp)}</div>` : '';
-
-  let html = query ? `<div class="sub">找到 ${list.length} 筆${list.length > 300 ? '（僅顯示前 300 筆）' : ''}</div>` : '', lastDay = '';
-  for (const t of shown) {
-    if (t.date !== lastDay) { html += `<div class="day">${t.date}</div>`; lastDay = t.date; }
-    html += `<div class="tx" data-uid="${esc(t.uid)}"><div class="ic">${emojiOf(c1(t.class1))}</div><div class="grow"><div>${esc(catLabel(t))}</div><div class="sub">${esc(t.memo)}${t.projectId ? ' · ' + esc(projName(t.projectId)) : ''}</div></div><b class="${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}</b></div>`;
+  renderChrome();
+  const sheet = document.getElementById("sheet");
+  const view = document.getElementById("view");
+  const active = document.activeElement;
+  const key = overlayKey();
+  if (state.overlay) {
+    const sameSheet = key === paintedOverlay && sheet.childNodes.length;
+    const typing = sameSheet && active && sheet.contains(active);
+    if (!typing) {
+      if (state.form) readFormDom();
+      renderSheet();
+      paintedOverlay = key;
+    } else sheet.hidden = false;
+    return;
   }
-  $('#list').innerHTML = html || `<div class="sub">${query ? '找不到符合的紀錄' : '這個月沒有紀錄'}</div>`;
-
-  // 統計
-  $('#catTitle').textContent = curMonth + ' 支出分類';
-  const byCat = {};
-  mlist.filter(t => t.type === 'expense').forEach(t => { const k = emojiOf(c1(t.class1)) + ' ' + (c1(t.class1)?.name || '未分類'); byCat[k] = (byCat[k] || 0) + t.amount; });
-  const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-  const max = entries[0]?.[1] || 1;
-  $('#catStats').innerHTML = entries.map(([k, v]) => `<div style="margin-bottom:8px"><div class="row"><span class="grow">${esc(k)}</span><b>${fmt(v)}</b><span class="sub">${Math.round(v / (mExp || 1) * 100)}%</span></div><div class="bar" style="width:${v / max * 100}%"></div></div>`).join('') || '<div class="sub">沒有資料</div>';
-  $('#budgetCard').innerHTML = `<h2>${curMonth} 預算</h2>${budgetHtml(mExp)}<p style="margin:8px 0 0"><button class="ghost" id="editBudget">${budget() ? '修改預算' : '設定月預算'}</button></p>`;
-  renderTrend();
-  renderProjects();
+  paintedOverlay = "";
+  sheet.hidden = true;
+  sheet.replaceChildren();
+  const typing = active && view.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+  if (typing && active.id === "q") {
+    paintLedger();
+    return;
+  }
+  if (typing && (active.id === "budget-input" || active.id === "api-url" || active.id === "api-token")) return;
+  renderView();
 }
 
-async function editBudget() {
-  const v = prompt('每月預算（輸入 0 取消預算）', budget() || '');
-  if (v === null) return;
-  const n = Number(v);
-  if (isNaN(n) || n < 0) return alert('請輸入數字');
-  try { await api('setSetting', { key: 'monthlyBudget', value: n }); D.settings.monthlyBudget = n; saveCache(); render(); }
-  catch (e) { alert('儲存失敗：' + e.message + '\n（若是 unknown action，請依說明更新 Apps Script 並重新部署）'); }
+function renderView() {
+  const view = document.getElementById("view");
+  if (state.mode === "unset") {
+    view.replaceChildren(renderWelcome());
+    paintFooter();
+    return;
+  }
+  let page = renderSettings();
+  if (state.tab === "ledger") page = renderLedgerShell();
+  else if (state.tab === "stats") page = renderStats();
+  else if (state.tab === "projects") page = renderProjects();
+  view.replaceChildren(renderBanners(), page);
+  if (state.tab === "ledger") paintLedger();
+  if (state.tab === "settings") paintImportStatus();
 }
 
-/* ---------- 新增 / 編輯（快速輸入） ---------- */
-const F = { type: 'expense', c1: '', c2: '' };
-function fillSelect(sel, opts, blank) { sel.innerHTML = (blank ? `<option value="">${blank}</option>` : '') + opts.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join(''); }
-
-function freqCombos(type) {
-  const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-  const cnt = {};
-  D.tx.filter(t => t.type === type && t.date >= since && c1(t.class1)).forEach(t => { const k = t.class1 + '|' + t.class2; cnt[k] = (cnt[k] || 0) + 1; });
-  return Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k.split('|'));
+function renderWelcome() {
+  return el("div", { class: "welcome" },
+    el("p", { class: "eyebrow" }, "自己的帳本"),
+    el("h2", { class: "welcome-title" }, "日用帳"),
+    el("p", {}, "CostDiary 的帳，改放在你自己的 Google 試算表。這支手機負責記，試算表負責留。"),
+    el("button", { type: "button", class: "primary", id: "use-local", onClick: go(useLocal) }, "先在這台手機試用"),
+    el("p", { class: "or" }, "或是連上已經部署好的試算表"),
+    renderApiForm(),
+    el("p", { class: "muted", id: "welcome-ver" }, ""));
 }
 
-function renderForm() {
-  $('#fTypeExp').classList.toggle('on', F.type === 'expense');
-  $('#fTypeInc').classList.toggle('on', F.type === 'income');
-  const freq = freqCombos(F.type);
-  $('#fFreqLbl').classList.toggle('hidden', !freq.length);
-  $('#fFreq').innerHTML = freq.map(([a, b]) => `<button type="button" class="chip" data-a="${esc(a)}" data-b="${esc(b)}">${emojiOf(c1(a))} ${esc((c2(b) || c1(a)).name)}</button>`).join('');
-  $('#fGrid').innerHTML = D.cats.filter(c => c.level === 1 && c.kind === F.type)
-    .map(c => `<button type="button" class="cat ${c.id === F.c1 ? 'on' : ''}" data-id="${esc(c.id)}"><span>${emojiOf(c)}</span>${esc(c.name)}</button>`).join('');
-  const subs = F.c1 ? D.cats.filter(c => c.level === 2 && c.parent === F.c1) : [];
-  $('#fSub').innerHTML = subs.length ? `<button type="button" class="chip ${F.c2 === '' ? 'on' : ''}" data-id="">不分</button>` +
-    subs.map(c => `<button type="button" class="chip ${c.id === F.c2 ? 'on' : ''}" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join('') : '';
+function renderApiForm() {
+  return el("form", { id: "api-form", onSubmit: (event) => { event.preventDefault(); connectFromForm(); } },
+    el("label", { for: "api-url" }, "網頁應用程式網址"),
+    el("input", { id: "api-url", type: "url", placeholder: "https://script.google.com/macros/s/…/exec", value: localStorage.getItem("apiUrl") || "", autocomplete: "off", spellcheck: "false" }),
+    el("label", { for: "api-token" }, "TOKEN"),
+    el("div", { class: "tokenline" },
+      el("input", { id: "api-token", type: "password", value: localStorage.getItem("apiToken") || "", autocomplete: "off", spellcheck: "false" }),
+      el("button", { type: "button", class: "textish", onClick: () => {
+        const input = document.getElementById("api-token");
+        if (input) input.type = input.type === "password" ? "text" : "password";
+      } }, "顯示")),
+    el("p", { class: "muted" }, "網址要是以 /exec 結尾的部署網址。TOKEN 只留在這台瀏覽器，不會寫進程式。"),
+    el("p", { id: "api-error", class: "bad" }, ""),
+    el("button", { type: "submit", class: "primary", id: "save-api" }, state.mode === "cloud" ? "更新連線" : "連上試算表"));
 }
 
-function openForm(t) {
-  editing = t || null;
-  F.type = t?.type || 'expense'; F.c1 = t?.class1 || ''; F.c2 = t?.class2 || '';
-  fillSelect($('#fAcc'), D.accounts);
-  fillSelect($('#fProj'), D.projects, '（無專案）');
-  const lastAcc = t?.accountId || localStorage.getItem('lastAcc') || D.tx.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.accountId;
-  if (lastAcc && D.accounts.some(a => a.id === lastAcc)) $('#fAcc').value = lastAcc;
-  $('#fProj').value = t?.projectId || '';
-  $('#fDate').value = t?.date || ymd(new Date());
-  $('#fAmount').value = t?.amount ?? '';
-  $('#fMemo').value = t?.memo || '';
-  renderForm();
-  $('#formDlg').showModal();
-  if (!t) setTimeout(() => $('#fAmount').focus(), 50);
+function renderLedgerShell() {
+  return el("div", {},
+    el("div", { class: "search" }, el("input", {
+      id: "q", type: "search", placeholder: "搜尋備註、分類、金額、發票品項", value: state.query,
+      autocomplete: "off", enterkeyhint: "search", "aria-label": "搜尋",
+      onInput: (event) => { state.query = event.target.value; paintLedger(); },
+    })),
+    el("div", { id: "summary" }),
+    el("div", { id: "list", class: "list-card" }));
 }
 
-async function saveForm() {
-  const amount = Number($('#fAmount').value);
-  if (!amount || amount <= 0) return alert('請輸入金額');
-  if (!F.c1) return alert('請選擇分類');
-  const now = new Date().toISOString();
-  const t = {
-    uid: editing?.uid || 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    date: $('#fDate').value, type: F.type, amount,
-    accountId: $('#fAcc').value, class1: F.c1, class2: F.c2, projectId: $('#fProj').value,
-    memo: $('#fMemo').value, invoiceId: editing?.invoiceId || '', photoFileId: editing?.photoFileId || '',
-    createdAt: editing?.createdAt || now, modifiedAt: now
-  };
-  $('#fSave').disabled = true;
-  try {
-    await sendOrQueue({ action: 'upsertTx', row: txToRow(t) });
-    const i = D.tx.findIndex(x => x.uid === t.uid);
-    if (i >= 0) D.tx[i] = t; else D.tx.push(t);
-    localStorage.setItem('lastAcc', t.accountId);
-    curMonth = t.date.slice(0, 7);
-    saveCache(); $('#formDlg').close(); render();
-  } catch (e) { alert('儲存失敗：' + e.message); }
-  $('#fSave').disabled = false;
+function visibleTransactions() {
+  const query = state.query.trim();
+  if (query) return searchLimited(state.data, query, 300);
+  const rows = state.data.transactions.filter((tx) => String(tx.date || "").slice(0, 7) === state.month);
+  return { rows: rows, total: rows.length, truncated: false };
 }
 
-/* ---------- 專案頁 ---------- */
-function projectStats() {
-  const m = {};
-  D.tx.filter(t => t.projectId && t.type === 'expense').forEach(t => {
-    const p = m[t.projectId] ||= { id: t.projectId, total: 0, n: 0, days: new Set(), last: '', first: '9999', byCat: {}, tx: [] };
-    p.total += t.amount; p.n++; p.days.add(t.date); p.tx.push(t);
-    if (t.date > p.last) p.last = t.date; if (t.date < p.first) p.first = t.date;
-    const k = emojiOf(c1(t.class1)) + ' ' + (c1(t.class1)?.name || '未分類');
-    p.byCat[k] = (p.byCat[k] || 0) + t.amount;
+function paintLedger() {
+  const summary = document.getElementById("summary");
+  const list = document.getElementById("list");
+  if (!summary || !list) return;
+  summary.replaceChildren(renderSummary());
+  const nodes = renderTxList();
+  list.replaceChildren.apply(list, nodes);
+}
+
+function renderSummary() {
+  if (state.query.trim()) {
+    const view = searchLimited(state.data, state.query, 300);
+    return el("div", { class: "hero" },
+      el("p", { class: "eyebrow" }, "搜尋全部期間"),
+      el("p", { class: "hero-num" }, String(view.total)),
+      el("p", { class: "subline" }, view.total ? "筆符合" + (view.truncated ? "，畫面上先顯示 300 筆" : "") : "沒有符合的帳"));
+  }
+  const expense = sumMonth(state.data.transactions, state.month, "expense");
+  const income = sumMonth(state.data.transactions, state.month, "income");
+  return el("div", { class: "hero" },
+    el("p", { class: "eyebrow" }, "本月支出"),
+    el("p", { class: "hero-num" }, formatMoney(expense), el("span", { class: "unit" }, "元")),
+    el("p", { class: "subline" }, "收入 " + formatMoney(income) + " · 結餘 " + formatMoney(income - expense)));
+}
+
+function renderTxList() {
+  const view = visibleTransactions();
+  if (!view.rows.length) {
+    if (state.query.trim()) return [el("div", { class: "empty" }, el("p", {}, "沒有符合的帳"), el("p", { class: "muted" }, "試試分類、備註、金額或發票品項，多個詞要同時符合。"))];
+    return [el("div", { class: "empty" },
+      el("p", {}, monthTitle(state.month) + "還沒有記帳"),
+      el("p", { class: "muted" }, "用餐、交通，一筆就好。"),
+      el("button", { type: "button", class: "primary", id: "empty-add", onClick: () => openForm(null) }, "記一筆"))];
+  }
+  const nodes = [];
+  if (view.truncated) nodes.push(el("p", { class: "muted" }, "只顯示前 300 筆，請再加關鍵字。共 " + view.total + " 筆。"));
+  groupByDate(view.rows).forEach((group) => {
+    const sumText = group.income && group.expense
+      ? "支出 " + formatMoney(group.expense) + " · 收入 " + formatMoney(group.income)
+      : (group.income ? "收入 " + formatMoney(group.income) : formatMoney(group.expense));
+    nodes.push(el("div", { class: "dayh" }, el("span", {}, formatDayLabel(group.date) + " " + weekday(group.date)), el("span", {}, sumText)));
+    group.items.forEach((tx) => nodes.push(renderTxButton(tx)));
   });
-  return Object.values(m).sort((a, b) => b.last.localeCompare(a.last));
+  return nodes;
+}
+
+function renderTxButton(tx) {
+  const project = findById(state.data.projects, tx.projectId);
+  const meta = [tx.memo, project && project.name, tx.invoiceId ? "發票" : "", tx.photoFileId ? "照片" : ""].filter(Boolean).join(" · ");
+  return el("button", { type: "button", class: "tx", "data-uid": tx.uid, onClick: () => openDetail(tx.uid) },
+    el("span", { class: "emoji", "aria-hidden": "true" }, txEmoji(state.data, tx)),
+    el("span", { class: "tx-main" }, el("span", { class: "tx-title" }, txTitle(state.data, tx)), meta ? el("span", { class: "tx-memo" }, meta) : null),
+    el("span", { class: "amt " + tx.type }, (tx.type === "income" ? "＋" : "") + formatMoney(tx.amount)));
+}
+
+function renderStats() {
+  const today = new Date();
+  const key = localISODate(today).slice(0, 7);
+  const spent = sumMonth(state.data.transactions, key, "expense");
+  const saved = Number(state.data.settings.monthlyBudget) || 0;
+  const status = budgetStatus(spent, saved, today);
+  const width = saved > 0 ? Math.min(100, Math.round(status.ratio * 100)) : 0;
+  let hint = "設定每月預算後，這裡會顯示這個月還能花多少。";
+  if (saved > 0 && status.over) hint = "已經超出預算 " + formatMoney(spent - saved) + " 元";
+  else if (saved > 0) hint = "剩下 " + formatMoney(status.remaining) + " 元 · 含今天還有 " + status.daysLeft + " 天，一天約 " + formatMoney(status.perDay) + " 元";
+  const monthTx = state.data.transactions.filter((tx) => String(tx.date || "").slice(0, 7) === key && tx.type === state.statsKind);
+  const breaks = categoryBreakdown(state.data, monthTx, state.statsKind);
+  return el("div", {},
+    el("section", { class: "card" },
+      el("h2", {}, monthTitle(key) + "預算"),
+      el("label", { for: "budget-input" }, "每月預算（元）"),
+      el("input", { id: "budget-input", inputmode: "decimal", "aria-label": "每月預算", value: state.budgetDraft != null ? state.budgetDraft : (state.data.settings.monthlyBudget || ""), onInput: (event) => { state.budgetDraft = event.target.value; } }),
+      el("button", { type: "button", class: "primary", id: "save-budget", onClick: go(saveBudget) }, "儲存預算"),
+      saved > 0 ? el("div", { class: "budget-track" + (status.over ? " over" : ""), style: "margin-top:12px" }, el("span", { style: "width:" + width + "%" })) : null,
+      el("p", { class: "muted" }, hint)),
+    el("section", { class: "card" },
+      el("h2", {}, "近 12 個月"),
+      el("p", { class: "legend" }, el("span", { class: "dot expense" }, "支出"), el("span", { class: "dot income" }, "收入")),
+      renderChart(monthKeysLast12(today)),
+      el("p", { class: "muted" }, "點月份會打開那個月的明細。")),
+    el("section", { class: "card" },
+      el("h2", {}, "這個月的分類"),
+      el("div", { class: "segment" },
+        el("button", { type: "button", "aria-pressed": state.statsKind === "expense" ? "true" : "false", onClick: () => { state.statsKind = "expense"; render(); } }, "支出"),
+        el("button", { type: "button", "aria-pressed": state.statsKind === "income" ? "true" : "false", onClick: () => { state.statsKind = "income"; render(); } }, "收入")),
+      breaks.length ? renderBars(breaks) : el("p", { class: "muted" }, "這個月還沒有這類帳。")));
+}
+
+function renderChart(keys) {
+  const width = 360;
+  const height = 176;
+  const expenses = keys.map((key) => sumMonth(state.data.transactions, key, "expense"));
+  const incomes = keys.map((key) => sumMonth(state.data.transactions, key, "income"));
+  const max = Math.max.apply(null, [1].concat(expenses, incomes));
+  const slot = width / keys.length;
+  const current = localISODate(new Date()).slice(0, 7);
+  const svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: "chart", role: "group", "aria-label": "近 12 個月收支" });
+  keys.forEach((key, index) => {
+    const x = index * slot;
+    const expenseH = expenses[index] ? Math.max(2, Math.round(expenses[index] / max * 112)) : 0;
+    const incomeH = incomes[index] ? Math.max(2, Math.round(incomes[index] / max * 112)) : 0;
+    const base = 132;
+    if (expenseH) svg.append(svgEl("rect", { x: x + slot * 0.18, y: base - expenseH, width: slot * 0.28, height: expenseH, rx: 2, fill: "#c84b2f" }));
+    if (incomeH) svg.append(svgEl("rect", { x: x + slot * 0.52, y: base - incomeH, width: slot * 0.28, height: incomeH, rx: 2, fill: "#0c7a58" }));
+    svg.append(svgEl("text", { x: x + slot / 2, y: 156, "text-anchor": "middle", fill: key === current ? "#1e4fd7" : "#6f675f", "font-size": "11" }, String(Number(key.slice(5)))));
+    const hit = svgEl("rect", { x: x, y: 0, width: slot, height: height, fill: "transparent", role: "button", tabindex: "0", "aria-label": monthTitle(key) + " 支出 " + formatMoney(expenses[index]) + " 元，收入 " + formatMoney(incomes[index]) + " 元" });
+    const open = () => { state.month = key; state.tab = "ledger"; state.query = ""; state.overlay = null; render(); };
+    hit.addEventListener("click", open);
+    hit.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+    });
+    svg.append(hit);
+  });
+  return svg;
+}
+
+function renderBars(rows) {
+  const top = rows.length > 8 ? rows.slice(0, 7).concat([{ name: "其他", amount: round2(rows.slice(7).reduce((sum, row) => sum + row.amount, 0)) }]) : rows;
+  const max = Math.max.apply(null, top.map((row) => row.amount).concat(1));
+  const total = top.reduce((sum, row) => sum + row.amount, 0) || 1;
+  return el("div", { class: "bars" }, top.map((row) => el("div", { class: "bar-row" },
+    el("div", { class: "bar-name" }, el("span", {}, row.name), el("span", {}, formatMoney(row.amount) + " · " + Math.round(row.amount / total * 100) + "%")),
+    el("div", { class: "track" }, el("span", { style: "width:" + Math.max(2, row.amount / max * 100) + "%" })))));
 }
 
 function renderProjects() {
-  const list = projectStats();
-  $('#projList').innerHTML = list.map(p => `<div class="card proj" data-id="${esc(p.id)}">
-      <div class="row"><span class="grow">${esc(projName(p.id))}</span><b class="exp">${fmt(p.total)}</b></div>
-      <div class="sub">${p.first} ~ ${p.last} · ${p.n} 筆 · 記帳 ${p.days.size} 天 · 每記帳日平均 ${fmt(p.total / p.days.size)}</div></div>`).join('')
-    || '<div class="card sub">還沒有專案資料</div>';
+  const projects = state.data.projects.slice().sort((a, b) => String(projectStats(state.data, b.id).end).localeCompare(String(projectStats(state.data, a.id).end)) || String(a.name).localeCompare(String(b.name), "zh-Hant"));
+  if (!projects.length) {
+    return el("div", { class: "empty" }, el("p", {}, "還沒有專案"), el("p", { class: "muted" }, "匯入 CostDiary 後，旅遊團會出現在這裡。"));
+  }
+  return el("div", {}, projects.map((project) => {
+    const stats = projectStats(state.data, project.id);
+    const period = stats.start ? stats.start.replace(/-/g, "/") + " – " + stats.end.replace(/-/g, "/") : "還沒有明細";
+    return el("button", { type: "button", class: "project", onClick: () => openProject(project.id) },
+      el("b", {}, project.name),
+      el("span", {}, formatMoney(stats.total) + " 元"),
+      el("span", { class: "muted" }, period + " · " + stats.count + " 筆"));
+  }));
+}
+
+function renderSettings() {
+  return el("div", {},
+    el("section", { class: "card" },
+      el("h2", {}, "連線"),
+      el("p", { class: "muted" }, state.mode === "cloud" ? "現在顯示的是 Google 試算表裡的帳。" : "目前是本機試用，資料只在這台手機。"),
+      renderApiForm()),
+    renderVersionCard(),
+    renderImportCard(),
+    renderDeviceCard(),
+    renderAccounts());
+}
+
+function renderVersionCard() {
+  const status = state.mode === "cloud" ? versionStatus(state.backendVersion, REQUIRES_BACKEND) : "missing";
+  let line = "⚠️ 尚未連上後端";
+  if (state.mode === "cloud" && status === "missing") line = "⚠️ 後端沒有回報版本，可能是舊的 Code.gs。";
+  else if (state.mode === "cloud" && status === "old") line = "⚠️ 後端 v" + state.backendVersion + " 比這個頁面需要的 v" + REQUIRES_BACKEND + " 舊。請到 Apps Script 部署新版本。";
+  else if (status === "ok") line = "✅ 前後端版本相符";
+  return el("section", { class: "card" },
+    el("h2", {}, "版本資訊"),
+    el("p", {}, "前端 v" + APP_VERSION),
+    el("p", {}, "此頁需要後端 ≥ v" + REQUIRES_BACKEND),
+    el("p", {}, "後端 " + (state.backendVersion ? "v" + state.backendVersion : "尚未回報")),
+    el("p", {}, line));
+}
+
+function renderImportCard() {
+  return el("section", { class: "card", id: "import-card", onDragover: (event) => event.preventDefault(), onDrop: (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+    if (file) onPickFile(file);
+  } },
+    el("h2", {}, "匯入 CostDiary 備份"),
+    el("p", { class: "muted" }, "在這台瀏覽器解開 .cddb，一次上傳 500 筆。備份檔不會另外傳走。"),
+    el("label", { class: "file" },
+      el("input", { id: "cddb-file", type: "file", accept: ".cddb,.zip,application/zip,application/octet-stream", onChange: (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (file) onPickFile(file);
+        event.target.value = "";
+      } }),
+      "選擇 .cddb 檔"),
+    el("label", { class: "check", id: "clear-wrap", hidden: state.mode !== "cloud" },
+      el("input", { id: "clear-first", type: "checkbox" }),
+      "上傳前清空線上帳（每月預算會留下）"),
+    el("div", { id: "import-status" }));
+}
+
+function renderDeviceCard() {
+  return el("section", { class: "card" },
+    el("h2", {}, "這台手機"),
+    el("p", { class: "muted" }, state.mode === "cloud" ? "離線時會先把變更留在手機，連線後補傳。" : "本機試用的資料不會自動上傳。"),
+    state.mode === "cloud" ? el("button", { type: "button", class: "secondary", id: "sync-now", onClick: go(refreshCloud) }, "立即同步") : null,
+    state.mode === "local" ? el("button", { type: "button", class: "secondary", id: "load-demo", onClick: go(loadDemo) }, "載入範例帳") : null,
+    state.mode === "cloud" ? el("button", { type: "button", class: "textish", id: "disconnect", onClick: disconnect }, "中斷連線") : null,
+    el("button", { type: "button", class: "danger", id: "clear-local", onClick: go(clearLocal) }, state.mode === "cloud" ? "清掉手機上的複本" : "清空這台手機的帳"));
+}
+
+function renderAccounts() {
+  if (!state.data.accounts.length) return el("section", { class: "card" }, el("h2", {}, "帳戶"), el("p", { class: "muted" }, "還沒有帳戶。"));
+  return el("section", { class: "card" },
+    el("h2", {}, "帳戶"),
+    el("p", { class: "muted" }, "畫面上方的月份收支只加總明細。備份檔裡的餘額另外列出，避免和明細重覆計算。"),
+    state.data.accounts.map((account) => el("div", { class: "kv" },
+      el("span", {}, account.name + (account.currency ? " · " + account.currency : "")),
+      el("strong", {}, "明細結餘 " + formatMoney(accountNet(state.data, account.id)) + (Number(account.initialBalance) ? " · 備份餘額 " + formatMoney(account.initialBalance) : "")))));
+}
+
+function budgetValueText() {
+  return state.budgetDraft != null ? state.budgetDraft : (state.data.settings.monthlyBudget || "");
+}
+
+async function saveBudget() {
+  const input = document.getElementById("budget-input");
+  const raw = input ? input.value.trim() : budgetValueText().trim();
+  if (raw !== "" && !Number.isFinite(Number(raw))) {
+    toast("請輸入預算金額");
+    return;
+  }
+  const value = raw === "" ? "" : String(round2(raw));
+  await commit({ op: "setSetting", key: "monthlyBudget", value: value });
+  state.budgetDraft = null;
+  toast("已儲存每月預算");
+  render();
+}
+
+function openDb() {
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open("daily-ledger", 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("kv")) request.result.createObjectStore("kv");
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  return dbPromise;
+}
+
+function kvGet(key) {
+  return openDb().then((db) => new Promise((resolve, reject) => {
+    const request = db.transaction("kv", "readonly").objectStore("kv").get(key);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  }));
+}
+
+function kvSet(key, value) {
+  return openDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+async function saveSnapshot() { await kvSet("snapshot", state.data); }
+
+async function enqueue(op) {
+  const queue = (await kvGet("queue")) || [];
+  queue.push(op);
+  await kvSet("queue", queue);
+  state.pending = queue.length;
+}
+
+async function commit(op) {
+  applyOp(state.data, op);
+  if (state.mode !== "cloud") {
+    await saveSnapshot();
+    return { queued: false };
+  }
+  await enqueue(op);
+  await saveSnapshot();
+  if (!navigator.onLine) return { queued: true };
+  await flushQueue();
+  return { queued: state.pending > 0 };
+}
+
+async function flushQueue() {
+  const queue = (await kvGet("queue")) || [];
+  if (!queue.length) { state.pending = 0; return; }
+  if (!navigator.onLine) return;
+  const remain = [];
+  for (let i = 0; i < queue.length; i++) {
+    try {
+      await sendOp(queue[i]);
+    } catch (error) {
+      remain.push(queue[i]);
+      for (let j = i + 1; j < queue.length; j++) remain.push(queue[j]);
+      state.loadError = "有變更還沒上傳：" + messageOf(error);
+      break;
+    }
+  }
+  await kvSet("queue", remain);
+  state.pending = remain.length;
+  if (!remain.length) state.loadError = "";
+}
+
+async function sendOp(op) {
+  if (op.op === "upsertTx") {
+    const row = Object.assign({}, op.row);
+    if (String(row.photoFileId || "").indexOf("pending:") === 0) {
+      const photo = await kvGet("photo:" + row.photoFileId);
+      if (photo) {
+        const uploaded = await api("uploadPhoto", { name: photo.name || "photo.jpg", mime: photo.mime, base64: photo.base64 }, 60000);
+        row.photoFileId = uploaded.fileId;
+        op.row.photoFileId = uploaded.fileId;
+      }
+    }
+    await api("upsertTx", { row: row }, 30000);
+  } else if (op.op === "deleteTx") {
+    await api("deleteTx", { uid: op.uid }, 30000);
+  } else if (op.op === "setSetting") {
+    await api("setSetting", { key: op.key, value: op.value }, 30000);
+  }
+}
+
+async function api(action, extra, timeoutMs, creds) {
+  const url = ((creds && creds.url) || localStorage.getItem("apiUrl") || "").trim();
+  const token = (creds && creds.token) || localStorage.getItem("apiToken") || "";
+  if (!url || !token) throw new Error("尚未設定連線");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || 30000);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(Object.assign({ token: token, action: action }, extra || {})),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch (error) { throw new Error("回傳的不是 JSON。請確認網址是網頁應用程式的 /exec，而且存取權是「所有人」。"); }
+    if (data.version) state.backendVersion = data.version;
+    if (!data.ok) throw new Error(data.error || "後端拒絕");
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("連線逾時，請再試一次");
+    if (error.name === "TypeError") throw new Error("連不上後端");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function refreshCloud() {
+  if (state.mode !== "cloud") return;
+  state.syncing = true;
+  renderChrome();
+  try {
+    await flushQueue();
+    if (!state.pending) {
+      const data = await api("all", {}, 90000);
+      state.data = normalizeData(data);
+      state.backendVersion = data.version || state.backendVersion;
+      state.loadError = "";
+      await saveSnapshot();
+    }
+  } catch (error) {
+    state.loadError = messageOf(error);
+  } finally {
+    state.syncing = false;
+    render();
+  }
+}
+
+async function useLocal() {
+  if (!state.data.accounts.length) {
+    state.data = starterData();
+    await saveSnapshot();
+  }
+  state.mode = "local";
+  localStorage.setItem("ledgerMode", "local");
+  state.tab = "ledger";
+  toast("可以先在這台手機記。連上試算表後再上傳。");
+  render();
+}
+
+async function loadDemo() {
+  if (state.data.transactions.length && !window.confirm("載入範例會取代這台手機上現在的帳。")) return;
+  state.data = buildDemo(new Date());
+  await saveSnapshot();
+  state.month = localISODate(new Date()).slice(0, 7);
+  state.tab = "ledger";
+  toast("已載入範例");
+  render();
+}
+
+async function clearLocal() {
+  const cloud = state.mode === "cloud";
+  const ok = window.confirm(cloud ? "清掉這台手機上的複本？試算表裡的帳還在，下次同步會再下載。" : "清掉這台手機上的帳？此動作不能復原。");
+  if (!ok) return;
+  state.data = cloud ? emptyData() : starterData();
+  state.pending = 0;
+  await saveSnapshot();
+  await kvSet("queue", []);
+  toast(cloud ? "已清掉手機上的複本" : "已清成空白帳本");
+  render();
+  if (cloud) refreshCloud();
+}
+
+function disconnect() {
+  localStorage.removeItem("apiUrl");
+  localStorage.removeItem("apiToken");
+  state.backendVersion = "";
+  state.loadError = "";
+  state.mode = state.data.accounts.length ? "local" : "unset";
+  localStorage.setItem("ledgerMode", state.mode === "local" ? "local" : "");
+  toast("已中斷連線，試算表裡的帳還在");
+  render();
+}
+
+async function connectFromForm() {
+  const url = (document.getElementById("api-url").value || "").trim();
+  const token = (document.getElementById("api-token").value || "").trim();
+  const show = (text) => {
+    const node = document.getElementById("api-error");
+    if (node) node.textContent = text || "";
+  };
+  if (!isAllowedApiUrl(url)) { show("網址需要以 https:// 開頭"); return; }
+  if (!token) { show("請貼上 TOKEN"); return; }
+  show("連線中…");
+  try {
+    const creds = { url: url, token: token };
+    const ping = await api("ping", {}, 20000, creds);
+    const remote = normalizeData(await api("all", {}, 90000, creds));
+    const hadLocal = state.mode !== "cloud" && (state.data.transactions.length || state.data.accounts.length);
+    const remoteHas = remote.transactions.length || remote.accounts.length;
+    if (remoteHas && hadLocal && !window.confirm("線上已經有帳。連線後會改顯示線上的資料。")) { show(""); return; }
+    localStorage.setItem("apiUrl", url);
+    localStorage.setItem("apiToken", token);
+    localStorage.setItem("ledgerMode", "cloud");
+    state.mode = "cloud";
+    state.backendVersion = ping.version || "";
+    if (!remoteHas && hadLocal && window.confirm("線上試算表還是空的。要把這台手機上的帳上傳嗎？")) {
+      await uploadPrevious(state.data);
+      return;
+    }
+    state.data = remote;
+    state.loadError = "";
+    state.pending = 0;
+    await saveSnapshot();
+    await kvSet("queue", []);
+    state.tab = "ledger";
+    show("");
+    toast(remoteHas ? "已連上線上的帳" : "已連上，試算表還是空的");
+    render();
+  } catch (error) {
+    show(messageOf(error));
+  }
+}
+
+async function uploadPrevious(data) {
+  const photos = [];
+  for (let i = 0; i < data.transactions.length; i++) {
+    const id = String(data.transactions[i].photoFileId || "");
+    if (id.indexOf("local:") !== 0 && id.indexOf("pending:") !== 0) continue;
+    const photo = await kvGet("photo:" + id);
+    if (photo) photos.push({ uid: data.transactions[i].uid, name: photo.name || "photo.jpg", mime: photo.mime, base64: photo.base64, missing: false });
+  }
+  const bundle = {
+    sig: "local-upload",
+    accounts: data.accounts,
+    projects: data.projects,
+    categories: data.categories,
+    receiptItems: data.receiptItems,
+    photos: photos,
+    transactions: data.transactions.map((tx) => Object.assign({}, tx, {
+      photoFileId: String(tx.photoFileId || "").indexOf("local:") === 0 || String(tx.photoFileId || "").indexOf("pending:") === 0 ? "" : (tx.photoFileId || ""),
+    })),
+  };
+  state.tab = "settings";
+  importUi.phase = "uploading";
+  render();
+  await pushBundle(bundle, { clear: false, resume: false, sig: bundle.sig });
+  const settingKeys = Object.keys(data.settings || {});
+  for (let i = 0; i < settingKeys.length; i++) {
+    if (settingKeys[i] === "demo") continue;
+    await api("setSetting", { key: settingKeys[i], value: data.settings[settingKeys[i]] == null ? "" : String(data.settings[settingKeys[i]]) }, 30000);
+  }
+  localStorage.removeItem(CP_KEY);
+  state.tab = "ledger";
+  state.query = "";
+  toast("手機上的帳已上傳");
+  await refreshCloud();
+}
+
+function openForm(tx) {
+  const accounts = state.data.accounts;
+  const last = localStorage.getItem("lastAccountId") || "";
+  const fallback = accounts.some((account) => String(account.id) === last) ? last : (accounts[0] ? accounts[0].id : "");
+  state.form = {
+    editing: !!tx,
+    uid: tx ? tx.uid : "",
+    type: tx ? tx.type : "expense",
+    amountStr: tx ? amountToStr(tx.amount) : "",
+    class1: tx ? tx.class1 || "" : "",
+    class2: tx ? tx.class2 || "" : "",
+    accountId: tx ? tx.accountId || "" : fallback,
+    projectId: tx && tx.projectId ? tx.projectId : "",
+    date: tx && tx.date ? tx.date : localISODate(new Date()),
+    memo: tx && tx.memo ? tx.memo : "",
+    invoiceId: tx && tx.invoiceId ? tx.invoiceId : "",
+    photoData: "",
+    photoName: "",
+    photoFileId: tx && tx.photoFileId ? tx.photoFileId : "",
+    createdAt: tx && tx.createdAt ? tx.createdAt : "",
+    saving: false,
+  };
+  state.overlay = { type: "form" };
+  render();
+}
+
+function amountToStr(n) {
+  const value = round2(n);
+  return value ? String(value) : "";
+}
+
+function openDetail(uid) {
+  state.overlay = { type: "detail", uid: String(uid) };
+  render();
 }
 
 function openProject(id) {
-  const p = projectStats().find(x => x.id === id); if (!p) return;
-  const cats = Object.entries(p.byCat).sort((a, b) => b[1] - a[1]);
-  const max = cats[0]?.[1] || 1;
-  $('#projBody').innerHTML = `<h2>${esc(projName(id))}</h2>
-    <div class="exp" style="font-size:24px;font-weight:600">${fmt(p.total)}</div>
-    <p class="sub">${p.first} ~ ${p.last} · 記帳 ${p.days.size} 天 · 每記帳日平均 ${fmt(p.total / p.days.size)}</p>
-    ${cats.map(([k, v]) => `<div style="margin-bottom:8px"><div class="row"><span class="grow">${esc(k)}</span><b>${fmt(v)}</b><span class="sub">${Math.round(v / p.total * 100)}%</span></div><div class="bar" style="width:${v / max * 100}%"></div></div>`).join('')}
-    <h2 style="margin-top:14px">明細</h2>
-    <table>${p.tx.sort((a, b) => a.date.localeCompare(b.date)).map(t => `<tr><td>${t.date.slice(5)} ${esc(catLabel(t))}<div class="sub">${esc(t.memo)}</div></td><td>${fmt(t.amount)}</td></tr>`).join('')}</table>`;
-  $('#projDlg').showModal();
+  state.overlay = { type: "project", id: String(id) };
+  render();
 }
 
-/* ---------- 詳情 ---------- */
-async function openDetail(uid) {
-  const t = D.tx.find(x => x.uid === uid); if (!t) return;
-  viewing = t;
-  const items = t.invoiceId ? D.items.filter(r => String(r[0]) === t.invoiceId) : [];
-  $('#detailBody').innerHTML = `
-    <h2>${esc(catLabel(t))}</h2>
-    <div class="${t.type === 'income' ? 'inc' : 'exp'}" style="font-size:22px;font-weight:600">${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}</div>
-    <p class="sub">${t.date} · ${esc(accName(t.accountId))}${t.projectId ? ' · ' + esc(projName(t.projectId)) : ''}</p>
-    <p>${esc(t.memo)}</p>
-    ${items.length ? `<h2>電子發票明細（${esc(t.invoiceId)}）</h2><table>${items.map(r => `<tr><td>${esc(r[4])} ×${r[6]}</td><td>${fmt(r[5])}</td></tr>`).join('')}</table>` : ''}
-    ${t.photoFileId ? '<p><button class="ghost" id="loadPhoto">載入照片</button></p><div id="photoBox"></div>' : ''}`;
-  $('#loadPhoto')?.addEventListener('click', async e => {
-    e.target.disabled = true;
-    try { const { base64 } = await api('getPhoto', { fileId: t.photoFileId }); $('#photoBox').innerHTML = `<img style="max-width:100%;border-radius:8px" src="data:image/jpeg;base64,${base64}">`; }
-    catch (err) { alert(err.message); }
-  });
-  $('#detailDlg').showModal();
+function closeSheet() {
+  state.overlay = null;
+  state.form = null;
+  render();
 }
 
-/* ---------- 匯入 ---------- */
-const decDate = n => { n = +n; return `${1900 + Math.floor(n / 10000)}-${String(Math.floor(n / 100) % 100).padStart(2, '0')}-${String(n % 100).padStart(2, '0')}`; };
-const isoTs = s => s > 0 ? new Date(s * 1000).toISOString() : '';
-const log = m => { $('#importLog').textContent = m; };
+function renderSheet() {
+  const sheet = document.getElementById("sheet");
+  sheet.hidden = false;
+  sheet.replaceChildren();
+  if (!state.overlay) return;
+  if (state.overlay.type === "form") {
+    sheet.append(renderForm());
+    paintType();
+    paintAmount();
+    paintFrequent();
+    paintCats();
+    paintSubs();
+  } else if (state.overlay.type === "detail") sheet.append(renderDetail(state.overlay.uid));
+  else if (state.overlay.type === "project") sheet.append(renderProjectSheet(state.overlay.id));
+}
 
-async function parseBackup(file) {
-  log('解壓縮中…');
-  const zip = await JSZip.loadAsync(file);
-  const dbFile = zip.file('db/fin.db');
-  if (!dbFile) throw new Error('找不到 db/fin.db，這可能不是 CostDiary 備份檔');
-  const SQL = await initSqlJs({ locateFile: f => SQLJS_BASE + f });
-  const db = new SQL.Database(await dbFile.async('uint8array'));
-  const q = sql => { const r = db.exec(sql); return r.length ? r[0].values : []; };
+function sheetFrame(title, body) {
+  return el("div", { class: "sheet-wrap" },
+    el("div", { class: "sheet-top" },
+      el("button", { type: "button", class: "ghost", id: "close-sheet", onClick: closeSheet }, "關閉"),
+      el("h2", {}, title)),
+    el("div", { class: "sheet-body" }, body));
+}
 
-  const accounts = q('SELECT tid,name,currencytype,money,weeklybudget,monthlybudget,type,color FROM accounts WHERE deleted=0')
-    .map(r => [String(r[0]), r[1], r[2], r[3], r[4], r[5], String(r[6]), r[7]]);
-  const projects = q('SELECT tid,name,memo,color,priority FROM projects').map(r => [String(r[0]), r[1], r[2], r[3], r[4]]);
-  const kindOf = {};
-  const cats = q('SELECT tid,type,name,imagename,sorder FROM finclass1').map(r => {
-    kindOf[r[0]] = r[1] == 0 ? 'income' : 'expense';
-    return [String(r[0]), 1, '', kindOf[r[0]], r[2], r[3], r[4]];
-  }).concat(q('SELECT tid,parent,name,imagename,sorder FROM finclass2').map(r => [String(r[0]), 2, String(r[1]), kindOf[r[1]] || 'expense', r[2], r[3], r[4]]));
+function renderForm() {
+  const form = state.form;
+  const body = el("div", {},
+    el("div", { class: "segment", id: "type-switch" },
+      el("button", { type: "button", id: "type-expense", onClick: () => setType("expense") }, "支出"),
+      el("button", { type: "button", id: "type-income", onClick: () => setType("income") }, "收入")),
+    el("div", { class: "amount-block" }, el("p", { class: "eyebrow" }, "金額"), el("p", { id: "amount-display", class: "hero-num is-empty" }, "0")),
+    el("div", { id: "pad", class: "pad" }, ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "←"].map((key) =>
+      el("button", { type: "button", onClick: () => { pushDigit(key); paintAmount(); paintFormError(""); } }, key))),
+    el("p", { class: "eyebrow" }, "常用"),
+    el("div", { id: "frequent", class: "chips" }),
+    el("div", { id: "cat-grid", class: "grid4" }),
+    el("div", { id: "subs", class: "chips" }),
+    el("label", { for: "date-input" }, "日期"),
+    el("input", { id: "date-input", type: "date", value: form.date, onChange: (event) => { state.form.date = event.target.value; } }),
+    el("label", { for: "account-input" }, "帳戶"),
+    accountSelect(),
+    el("label", { for: "project-input" }, "專案"),
+    projectSelect(),
+    el("label", { for: "memo-input" }, "備註"),
+    el("textarea", { id: "memo-input", rows: "2", maxlength: "200", onInput: (event) => { state.form.memo = event.target.value; } }, form.memo || ""),
+    el("label", { class: "file" },
+      el("input", { id: "photo-input", type: "file", accept: "image/*", onChange: onPhoto }),
+      "附上照片"),
+    el("p", { id: "photo-note", class: "muted" }, form.photoFileId ? "這筆已經有照片，再選一張會換掉。" : ""),
+    el("div", { id: "photo-preview" }),
+    el("p", { id: "form-error", class: "bad" }),
+    el("div", { class: "savebar" },
+      el("button", { type: "button", class: "primary", id: "save-tx", onClick: go(saveForm) }, form.editing ? "儲存修改" : "記上一筆"),
+      form.editing ? el("button", { type: "button", class: "danger", onClick: go(() => removeTx(form.uid)) }, "刪除這筆") : null));
+  return sheetFrame(form.editing ? "編輯" : "記一筆", body);
+}
 
-  const main = q('SELECT uid,sdate,stype,money,class1,class2,account,project,memo,hasphoto,photo,modtime,invoiceid,createtime FROM main WHERE deleted=0');
-  const photos = [], invoiceIds = new Set();
-  const tx = main.map((r, idx) => {
-    const [uid, sdate, stype, money, cl1, cl2, acc, proj, memo, hasPhoto, photo, modtime, inv, createtime] = r;
-    if (inv) invoiceIds.add(inv);
-    if (hasPhoto == 1 && photo) photos.push({ idx, path: `acc/${acc}/images/${photo}.jpg`, name: `${photo}.jpg` });
-    const date = decDate(sdate);
-    return [uid, date, stype == 0 ? 'income' : 'expense', Math.abs(money), String(acc), String(cl1), String(cl2),
-            proj ? String(proj) : '', memo || '', inv || '', '', createtime > 0 ? isoTs(createtime) : date + 'T12:00:00.000Z', isoTs(modtime)];
-  });
-
-  const items = []; let missing = 0;
-  for (const id of invoiceIds) {
-    const f = zip.file(`invoice/receipt/${id}.raw`);
-    if (!f) { missing++; continue; }
-    try {
-      const j = JSON.parse(await f.async('string'));
-      (j.shopping_list || []).forEach(it => items.push([id, j.seller_id || '', decDate(j.date), j.amount, it.name, it.price, it.count]));
-    } catch { missing++; }
+function accountSelect() {
+  const select = el("select", { id: "account-input", onChange: (event) => { state.form.accountId = event.target.value; } });
+  if (!state.data.accounts.length) {
+    select.append(el("option", { value: "" }, "沒有帳戶"));
+    return select;
   }
-  return { zip, accounts, projects, cats, tx, items, photos, missing, invoiceCount: invoiceIds.size };
+  state.data.accounts.forEach((account) => {
+    const option = el("option", { value: account.id }, account.name);
+    if (String(account.id) === String(state.form.accountId)) option.selected = true;
+    select.append(option);
+  });
+  return select;
 }
 
-$('#file').addEventListener('change', async e => {
-  const f = e.target.files[0]; if (!f) return;
-  $('#upload').disabled = true;
-  try {
-    parsed = await parseBackup(f);
-    const dates = parsed.tx.map(r => r[1]).sort();
-    log(`解析完成\n交易：${parsed.tx.length} 筆（${dates[0]} ~ ${dates.at(-1)}）\n帳戶：${parsed.accounts.length}　專案：${parsed.projects.length}　分類：${parsed.cats.length}\n電子發票：${parsed.invoiceCount} 張（找不到明細檔 ${parsed.missing} 張）→ 品項 ${parsed.items.length} 列\n照片：${parsed.photos.length} 張`);
-    $('#upload').disabled = false;
-  } catch (err) { log('解析失敗：' + err.message); }
-});
+function projectSelect() {
+  const select = el("select", { id: "project-input", onChange: (event) => { state.form.projectId = event.target.value; } });
+  const none = el("option", { value: "" }, "不指定");
+  if (!state.form.projectId) none.selected = true;
+  select.append(none);
+  state.data.projects.forEach((project) => {
+    const option = el("option", { value: project.id }, project.name);
+    if (String(project.id) === String(state.form.projectId)) option.selected = true;
+    select.append(option);
+  });
+  return select;
+}
 
-async function pushRows(sheet, rows, label) {
-  for (let i = 0; i < rows.length; i += 500) {
-    log(`${label}… ${Math.min(i + 500, rows.length)}/${rows.length}`);
-    await api('append', { sheet, rows: rows.slice(i, i + 500) });
+function setType(type) {
+  state.form.type = type;
+  const cat = findById(state.data.categories, state.form.class1);
+  if (!cat || cat.kind !== type) {
+    state.form.class1 = "";
+    state.form.class2 = "";
   }
+  paintType();
+  paintFrequent();
+  paintCats();
+  paintSubs();
 }
 
-$('#upload').addEventListener('click', async () => {
-  if (!parsed) return;
-  $('#upload').disabled = true;
+function paintType() {
+  ["expense", "income"].forEach((type) => {
+    const button = document.getElementById("type-" + type);
+    if (button && state.form) button.setAttribute("aria-pressed", state.form.type === type ? "true" : "false");
+  });
+}
+
+function paintAmount() {
+  const node = document.getElementById("amount-display");
+  if (!node || !state.form) return;
+  const text = state.form.amountStr || "";
+  if (!text) {
+    node.textContent = "0";
+    node.classList.add("is-empty");
+    return;
+  }
+  node.classList.remove("is-empty");
+  const parts = text.split(".");
+  const shown = formatMoney(Number(parts[0] || "0"));
+  node.textContent = parts.length > 1 ? shown + "." + parts[1] : shown;
+}
+
+function pushDigit(key) {
+  let text = state.form.amountStr || "";
+  if (key === "⌫" || key === "←") { state.form.amountStr = text.slice(0, -1); return; }
+  if (key === ".") {
+    if (text.indexOf(".") >= 0) return;
+    state.form.amountStr = (text || "0") + ".";
+    return;
+  }
+  if (text === "0") text = "";
+  const next = text + key;
+  const parts = next.split(".");
+  if (parts[0].length > 9) return;
+  if (parts[1] && parts[1].length > 2) return;
+  state.form.amountStr = next;
+}
+
+function paintFrequent() {
+  const host = document.getElementById("frequent");
+  if (!host || !state.form) return;
+  const pairs = frequentPairs(state.data, state.form.type, new Date(), 120);
+  if (!pairs.length) {
+    host.replaceChildren(el("span", { class: "muted" }, "最近還沒有常用分類"));
+    return;
+  }
+  host.replaceChildren.apply(host, pairs.map((pair) => {
+    const bits = pair[0].split("|");
+    const main = findById(state.data.categories, bits[0]);
+    const sub = findById(state.data.categories, bits[1]);
+    const cat = sub || main;
+    const pressed = String(state.form.class1) === bits[0] && String(state.form.class2 || "") === (bits[1] || "");
+    return el("button", { type: "button", class: "chip", "aria-pressed": pressed ? "true" : "false", onClick: () => selectPair(pair[0]) },
+      iconFor(cat && cat.icon, (sub && sub.name) || (main && main.name) || "") + " " + ((sub && sub.name) || (main && main.name) || "未分類"));
+  }));
+}
+
+function paintCats() {
+  const host = document.getElementById("cat-grid");
+  if (!host || !state.form) return;
+  const cats = mainCats(state.data, state.form.type);
+  if (!cats.length) {
+    host.replaceChildren(el("p", { class: "muted" }, "還沒有這個類型的分類"));
+    return;
+  }
+  host.replaceChildren.apply(host, cats.map((cat) => el("button", {
+    type: "button", class: "cat", "data-cat": cat.id,
+    "aria-pressed": String(cat.id) === String(state.form.class1) ? "true" : "false",
+    onClick: () => selectCategory("1", cat.id),
+  }, el("span", { class: "emoji", "aria-hidden": "true" }, iconFor(cat.icon, cat.name)), el("span", {}, cat.name))));
+}
+
+function paintSubs() {
+  const host = document.getElementById("subs");
+  if (!host || !state.form) return;
+  const subs = subCats(state.data, state.form.class1);
+  host.replaceChildren.apply(host, subs.map((cat) => el("button", {
+    type: "button", class: "chip",
+    "aria-pressed": String(cat.id) === String(state.form.class2) ? "true" : "false",
+    onClick: () => selectCategory("2", cat.id),
+  }, cat.name)));
+}
+
+function selectCategory(level, id) {
+  if (level === "1") {
+    state.form.class1 = id;
+    const subs = subCats(state.data, id);
+    if (!subs.some((cat) => String(cat.id) === String(state.form.class2))) state.form.class2 = subs.length === 1 ? subs[0].id : "";
+  } else {
+    const sub = findById(state.data.categories, id);
+    if (!sub) return;
+    state.form.class2 = sub.id;
+    state.form.class1 = sub.parentId;
+  }
+  paintFrequent();
+  paintCats();
+  paintSubs();
+  paintFormError("");
+}
+
+function selectPair(key) {
+  const bits = key.split("|");
+  state.form.class1 = bits[0];
+  state.form.class2 = bits[1] || "";
+  paintFrequent();
+  paintCats();
+  paintSubs();
+}
+
+function paintFormError(message) {
+  const node = document.getElementById("form-error");
+  if (node) node.textContent = message || "";
+}
+
+function readFormDom() {
+  ["date-input", "account-input", "project-input", "memo-input"].forEach((id) => {
+    const node = document.getElementById(id);
+    if (!node || !state.form) return;
+    if (id === "date-input") state.form.date = node.value;
+    if (id === "account-input") state.form.accountId = node.value;
+    if (id === "project-input") state.form.projectId = node.value;
+    if (id === "memo-input") state.form.memo = node.value;
+  });
+}
+
+function parseAmount(value) {
+  const text = String(value || "").replace(/,/g, "");
+  if (!text || text === ".") return 0;
+  return round2(text);
+}
+
+function validateForm() {
+  if (!(parseAmount(state.form.amountStr) > 0)) return "請輸入金額";
+  if (!state.form.date) return "請選擇日期";
+  if (!state.form.accountId) return "請選擇帳戶";
+  if (!state.form.class1) return "請選擇分類";
+  const subs = subCats(state.data, state.form.class1);
+  if (subs.length && !subs.some((cat) => String(cat.id) === String(state.form.class2))) return "請再選子分類";
+  return "";
+}
+
+function onPhoto(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file || !state.form) return;
+  if (file.size > 4 * 1024 * 1024) { paintFormError("照片請小於 4MB"); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.form.photoData = String(reader.result || "");
+    state.form.photoName = file.name;
+    const preview = document.getElementById("photo-preview");
+    const note = document.getElementById("photo-note");
+    if (preview) preview.replaceChildren(el("img", { alt: "照片預覽", src: state.form.photoData }));
+    if (note) note.textContent = file.name;
+  };
+  reader.readAsDataURL(file);
+}
+
+function splitDataUrl(url) {
+  const match = /^data:([^;]+);base64,(.*)$/.exec(url || "");
+  return match ? { mime: match[1], base64: match[2] } : { mime: "image/jpeg", base64: String(url || "") };
+}
+
+async function storePhoto(form, uid) {
+  const parts = splitDataUrl(form.photoData);
+  if (state.mode !== "cloud" || !navigator.onLine) {
+    const id = (state.mode === "cloud" ? "pending:" : "local:") + uid;
+    await kvSet("photo:" + id, { mime: parts.mime, base64: parts.base64, name: form.photoName || "photo.jpg" });
+    return id;
+  }
+  const uploaded = await api("uploadPhoto", { name: form.photoName || uid + ".jpg", mime: parts.mime, base64: parts.base64 }, 60000);
+  return uploaded.fileId;
+}
+
+async function saveForm() {
+  if (!state.form || state.form.saving) return;
+  readFormDom();
+  const error = validateForm();
+  paintFormError(error);
+  if (error) return;
+  state.form.saving = true;
+  const button = document.getElementById("save-tx");
+  if (button) { button.disabled = true; button.textContent = "儲存中…"; }
   try {
-    await api('ping');
-    if ($('#wipe').checked) for (const s of ['Transactions', 'Accounts', 'Projects', 'Categories', 'ReceiptItems']) await api('clear', { sheet: s });
-    for (const p of parsed.photos) {
-      log(`上傳照片 ${p.name}…`);
-      const f = parsed.zip.file(p.path);
-      if (f) parsed.tx[p.idx][10] = (await api('uploadPhoto', { name: p.name, base64: await f.async('base64') })).fileId;
+    if (!state.form.uid) state.form.uid = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const now = taipeiFromUnix(Math.floor(Date.now() / 1000));
+    let photoFileId = state.form.photoFileId || "";
+    if (state.form.photoData) photoFileId = await storePhoto(state.form, state.form.uid);
+    const row = publicTx({
+      uid: state.form.uid,
+      date: state.form.date,
+      type: state.form.type,
+      amount: parseAmount(state.form.amountStr),
+      accountId: state.form.accountId,
+      class1: state.form.class1,
+      class2: state.form.class2 || "",
+      projectId: state.form.projectId || "",
+      memo: state.form.memo || "",
+      invoiceId: state.form.invoiceId || "",
+      photoFileId: photoFileId,
+      createdAt: state.form.createdAt || now,
+      modifiedAt: now,
+    });
+    const result = await commit({ op: "upsertTx", row: row });
+    localStorage.setItem("lastAccountId", row.accountId);
+    if (String(state.data.settings.demo) === "1") {
+      delete state.data.settings.demo;
+      await saveSnapshot();
     }
-    await pushRows('Accounts', parsed.accounts, '帳戶');
-    await pushRows('Projects', parsed.projects, '專案');
-    await pushRows('Categories', parsed.cats, '分類');
-    await pushRows('ReceiptItems', parsed.items, '發票明細');
-    await pushRows('Transactions', parsed.tx, '交易');
-    log('匯入完成，重新載入資料…');
-    await loadAll();
-    log('✅ 匯入完成！到「明細」查看。');
-  } catch (err) { log('上傳失敗：' + err.message + '\n（可修正後再按一次，勾選「先清空」可避免重複）'); }
-  $('#upload').disabled = false;
-});
-
-/* ---------- 事件 / 啟動 ---------- */
-function showTab(name) {
-  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === name));
-  document.querySelectorAll('main > section').forEach(sec => sec.classList.toggle('hidden', sec.id !== 'tab-' + name));
-  $('#fab').classList.toggle('hidden', name !== 'list');
-  window.scrollTo(0, 0);
+    state.overlay = null;
+    state.form = null;
+    toast(result.queued ? "已記在這台手機，連線後上傳" : (row.createdAt === now && !result.queued ? "已記上一筆" : "已儲存"));
+    render();
+  } catch (error) {
+    state.form.saving = false;
+    if (button) { button.disabled = false; button.textContent = state.form.editing ? "儲存修改" : "記上一筆"; }
+    paintFormError(messageOf(error));
+  }
 }
-document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
-let qTimer;
-$('#q').addEventListener('input', e => { clearTimeout(qTimer); qTimer = setTimeout(() => { query = e.target.value.trim(); render(); }, 150); });
-$('#budgetCard').addEventListener('click', e => { if (e.target.id === 'editBudget') editBudget(); });
-$('#trend').addEventListener('click', e => { const g = e.target.closest('[data-month]'); if (g) { curMonth = g.dataset.month; $('#q').value = ''; query = ''; render(); showTab('list'); } });
-const shiftMonth = d => { const [y, m] = curMonth.split('-').map(Number); const dt = new Date(y, m - 1 + d, 1); curMonth = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`; render(); };
-$('#prev').onclick = () => shiftMonth(-1); $('#next').onclick = () => shiftMonth(1);
-$('#month').onchange = e => { if (e.target.value) { curMonth = e.target.value; render(); } };
-$('#list').addEventListener('click', e => { const el = e.target.closest('.tx'); if (el) openDetail(el.dataset.uid); });
-$('#fab').onclick = () => openForm();
-$('#fTypeExp').onclick = () => { F.type = 'expense'; F.c1 = F.c2 = ''; renderForm(); };
-$('#fTypeInc').onclick = () => { F.type = 'income'; F.c1 = F.c2 = ''; renderForm(); };
-$('#fFreq').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) { F.c1 = b.dataset.a; F.c2 = b.dataset.b; renderForm(); } });
-$('#fGrid').addEventListener('click', e => { const b = e.target.closest('.cat'); if (b) { F.c1 = b.dataset.id; F.c2 = ''; renderForm(); } });
-$('#fSub').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) { F.c2 = b.dataset.id; renderForm(); } });
-$('#projList').addEventListener('click', e => { const el = e.target.closest('.proj'); if (el) openProject(el.dataset.id); });
-$('#pClose').onclick = () => $('#projDlg').close();
-$('#fCancel').onclick = () => $('#formDlg').close(); $('#fSave').onclick = saveForm;
-$('#dClose').onclick = () => $('#detailDlg').close();
-$('#dEdit').onclick = () => { $('#detailDlg').close(); openForm(viewing); };
-$('#dDelete').onclick = async () => {
-  if (!confirm('確定刪除這筆紀錄？')) return;
-  try { await sendOrQueue({ action: 'deleteTx', uid: viewing.uid }); D.tx = D.tx.filter(t => t.uid !== viewing.uid); saveCache(); $('#detailDlg').close(); render(); }
-  catch (e) { alert(e.message); }
-};
-$('#saveCfg').onclick = async () => {
-  cfg.url = $('#cfgUrl').value.trim(); cfg.token = $('#cfgToken').value;
-  localStorage.setItem('apiUrl', cfg.url); localStorage.setItem('apiToken', cfg.token);
-  $('#cfgMsg').textContent = '連線中…';
-  try { await loadAll(); $('#cfgMsg').textContent = `✅ 已連線，載入 ${D.tx.length} 筆交易`; }
-  catch (e) { $('#cfgMsg').textContent = '❌ ' + e.message; }
-};
 
-$('#cfgUrl').value = cfg.url; $('#cfgToken').value = cfg.token;
-(async () => {
-  const c = await cacheGet('data');
-  const q0 = await cacheGet('queue'); if (q0 && !queue.length) queue = q0;
-  if (c?.D) { D = c.D; D.settings ||= {}; render(); setStatus('顯示上次資料（' + hhmm(c.at) + '），同步中…'); }
-  else render();
-  renderVersion();
-  if (queue.length) setStatus(pendingText());
-  window.addEventListener('online', () => { if (cfg.url) loadAll().catch(() => {}); });
-  if (cfg.url) loadAll().catch(e => { $('#cfgMsg').textContent = '❌ ' + e.message; });
-})();
+async function removeTx(uid) {
+  if (!window.confirm("刪除這筆帳？")) return;
+  const result = await commit({ op: "deleteTx", uid: uid });
+  state.overlay = null;
+  state.form = null;
+  toast(result.queued ? "已在手機上刪除，連線後同步" : "已刪除");
+  render();
+}
+
+function detailRow(label, value) {
+  if (!value) return null;
+  return el("div", { class: "kv" }, el("span", {}, label), el("strong", {}, value));
+}
+
+function renderDetail(uid) {
+  const tx = state.data.transactions.find((item) => item.uid === String(uid));
+  if (!tx) return sheetFrame("明細", el("p", {}, "找不到這筆帳"));
+  const items = state.data.receiptItems.filter((item) => String(item.invoiceId) === String(tx.invoiceId || ""));
+  const main = findById(state.data.categories, tx.class1);
+  const sub = findById(state.data.categories, tx.class2);
+  const body = el("div", {},
+    el("p", { class: "hero-num " + tx.type }, (tx.type === "income" ? "＋" : "") + formatMoney(tx.amount), el("span", { class: "unit" }, "元")),
+    detailRow("類型", tx.type === "income" ? "收入" : "支出"),
+    detailRow("分類", [main && main.name, sub && sub.name].filter(Boolean).join(" / ")),
+    detailRow("日期", tx.date ? formatDayLabel(tx.date) + " " + weekday(tx.date) : ""),
+    detailRow("帳戶", (findById(state.data.accounts, tx.accountId) || {}).name),
+    detailRow("專案", (findById(state.data.projects, tx.projectId) || {}).name),
+    detailRow("備註", tx.memo),
+    detailRow("發票", tx.invoiceId),
+    items.length ? el("div", { class: "items" }, el("p", { class: "eyebrow" }, "電子發票" + (items[0].sellerId ? " · " + items[0].sellerId : "")), items.map((item) => el("div", { class: "kv" }, el("span", {}, item.itemName), el("strong", {}, formatMoney(item.price) + " × " + item.count)))) : (tx.invoiceId ? el("p", { class: "muted" }, "這張發票沒有品項明細。") : null),
+    tx.photoFileId ? el("div", {}, el("button", { type: "button", class: "secondary", id: "load-photo", onClick: () => loadPhoto(tx.photoFileId) }, "查看照片"), el("div", { id: "photo-box" })) : null,
+    el("button", { type: "button", class: "primary", onClick: () => openForm(tx) }, "編輯"),
+    el("button", { type: "button", class: "danger", onClick: go(() => removeTx(tx.uid)) }, "刪除"));
+  return sheetFrame("這一筆", body);
+}
+
+async function loadPhoto(fileId) {
+  const box = document.getElementById("photo-box");
+  if (!box) return;
+  box.textContent = "載入照片…";
+  try {
+    let photo = await kvGet("photo:" + fileId);
+    if (!photo && state.mode === "cloud" && fileId.indexOf("local:") !== 0 && fileId.indexOf("pending:") !== 0) {
+      const result = await api("getPhoto", { fileId: fileId }, 60000);
+      photo = { mime: result.mime, base64: result.base64 };
+      await kvSet("photo:" + fileId, photo);
+    }
+    if (!photo) throw new Error(String(fileId).indexOf("pending:") === 0 ? "照片會在連線後上傳" : "這張照片還不在這台手機上");
+    box.replaceChildren(el("img", { alt: "交易照片", src: "data:" + photo.mime + ";base64," + photo.base64 }));
+  } catch (error) {
+    box.textContent = messageOf(error);
+  }
+}
+
+function renderProjectSheet(id) {
+  const project = findById(state.data.projects, id);
+  if (!project) return sheetFrame("專案", el("p", {}, "找不到這個專案"));
+  const stats = projectStats(state.data, id);
+  const breaks = categoryBreakdown(state.data, stats.txs, "expense");
+  const period = stats.start ? stats.start.replace(/-/g, "/") + " – " + stats.end.replace(/-/g, "/") : "還沒有明細";
+  const body = el("div", {},
+    project.memo ? el("p", {}, project.memo) : null,
+    el("p", { class: "hero-num" }, formatMoney(stats.total), el("span", { class: "unit" }, "元")),
+    el("p", { class: "muted" }, "總支出"),
+    el("div", { class: "stats" },
+      stat("期間", period),
+      stat("筆數", String(stats.count)),
+      stat("日曆天數", stats.calendarDays ? String(stats.calendarDays) : "—"),
+      stat("記帳天數", stats.bookedDays ? String(stats.bookedDays) : "—"),
+      stat("每記帳日平均", stats.bookedDays ? formatMoney(stats.avg) + " 元" : "—")),
+    el("p", { class: "muted" }, "每記帳日平均是總支出除以有記下一筆的日子，不是全程的日曆天數。出發前先買的票會把期間拉長。"),
+    breaks.length ? renderBars(breaks) : null,
+    el("div", { class: "list-card" }, stats.txs.length ? groupByDate(stats.txs).flatMap((group) => [el("div", { class: "dayh" }, el("span", {}, formatDayLabel(group.date))), ...group.items.map(renderTxButton)]) : el("p", { class: "muted" }, "這個專案還沒有明細。")));
+  return sheetFrame(project.name, body);
+}
+
+function stat(label, value) {
+  return el("div", { class: "stat" }, el("span", {}, label), el("b", {}, value));
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("無法載入解析程式，請確認可以連到 cdnjs。"));
+    document.head.appendChild(script);
+  });
+}
+
+function ensureLibs() {
+  if (window.JSZip && window.initSqlJs) return Promise.resolve();
+  if (!libPromise) {
+    libPromise = Promise.all([
+      loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"),
+      loadScript("https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"),
+    ]).catch((error) => { libPromise = null; throw error; });
+  }
+  return libPromise;
+}
+
+function sqlObjects(db, table) {
+  const allowed = { main: 1, accounts: 1, projects: 1, finclass1: 1, finclass2: 1, currencylist: 1 };
+  if (!allowed[table]) return [];
+  let result;
+  try { result = db.exec("SELECT * FROM " + table); }
+  catch (error) { return []; }
+  if (!result || !result.length) return [];
+  return result[0].values.map((values) => {
+    const row = {};
+    result[0].columns.forEach((col, index) => { row[String(col).toLowerCase()] = values[index]; });
+    return row;
+  });
+}
+
+async function parseCddb(file, onStatus) {
+  onStatus("正在讀取備份…");
+  await ensureLibs();
+  if (!window.JSZip || !window.initSqlJs) throw new Error("解析程式沒有載入。請確認可以連到 cdnjs。");
+  const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+  const paths = [];
+  let dbPath = "";
+  zip.forEach((path, entry) => {
+    if (entry.dir) return;
+    paths.push(path);
+    if (/fin\.db$/i.test(path)) dbPath = path;
+  });
+  if (!dbPath) throw new Error("找不到 db/fin.db。請確認這是 CostDiary 的 .cddb 備份。");
+  onStatus("正在讀取帳務資料庫…");
+  const SQL = await window.initSqlJs({ locateFile: () => "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.wasm" });
+  const database = new SQL.Database(await zip.file(dbPath).async("uint8array"));
+  try {
+    const accounts = sqlObjects(database, "accounts").map((row) => mapAccount(row, sqlObjects(database, "currencylist"))).filter(Boolean);
+    const projects = sqlObjects(database, "projects").map(mapProject).filter(Boolean);
+    const categories = inheritKind(sqlObjects(database, "finclass1").map(mapClass1).concat(sqlObjects(database, "finclass2").map(mapClass2)).filter(Boolean));
+    const skipped = { deleted: 0, transfer: 0, badDate: 0, badId: 0 };
+    const transactions = [];
+    sqlObjects(database, "main").forEach((row) => {
+      const mapped = mapMainRow(row);
+      if (mapped.skip) skipped[mapped.skip] = (skipped[mapped.skip] || 0) + 1;
+      else if (mapped.tx) transactions.push(mapped.tx);
+    });
+    onStatus("正在讀取發票…");
+    let badReceipt = 0;
+    const receiptItems = [];
+    for (let i = 0; i < paths.length; i++) {
+      const id = receiptPathId(paths[i]);
+      if (!id) continue;
+      try { receiptItems.push.apply(receiptItems, mapReceipt(id, await zip.file(paths[i]).async("string"))); }
+      catch (error) { badReceipt += 1; }
+    }
+    return { accounts: accounts, projects: projects, categories: categories, transactions: transactions, receiptItems: receiptItems, photos: planPhotos(paths, transactions), skipped: skipped, badReceipt: badReceipt, zip: zip };
+  } finally {
+    database.close();
+  }
+}
+
+async function onPickFile(file) {
+  importUi.phase = "parsing";
+  importUi.error = "";
+  importUi.summary = null;
+  importUi.message = "正在解析…";
+  importUi.fileName = file.name;
+  paintImportStatus();
+  try {
+    const parsed = await parseCddb(file, (message) => { importUi.message = message; paintImportStatus(); });
+    parsed.sig = [file.name, file.size, file.lastModified].join("|");
+    importBundle = parsed;
+    importUi.summary = {
+      transactions: parsed.transactions.length,
+      receiptItems: parsed.receiptItems.length,
+      categories: parsed.categories.length,
+      accounts: parsed.accounts.length,
+      projects: parsed.projects.length,
+      photos: parsed.photos.filter((photo) => !photo.missing).length,
+      missingPhotos: parsed.photos.filter((photo) => photo.missing).length,
+      skipped: parsed.skipped,
+      badReceipt: parsed.badReceipt,
+    };
+    const checkpoint = loadCheckpoint();
+    importUi.resume = !!(checkpoint && checkpoint.sig === parsed.sig);
+    importUi.phase = "ready";
+    importUi.message = "";
+  } catch (error) {
+    importBundle = null;
+    importUi.phase = "error";
+    importUi.error = messageOf(error);
+  }
+  paintImportStatus();
+}
+
+function paintImportStatus() {
+  const host = document.getElementById("import-status");
+  if (!host) return;
+  const nodes = [];
+  if (importUi.phase === "parsing" || importUi.phase === "uploading") {
+    nodes.push(el("p", {}, importUi.message || (importUi.phase === "parsing" ? "正在解析…" : "上傳中…")));
+    if (importUi.phase === "uploading") nodes.push(el("p", { class: "muted" }, "請留在這個分頁。若中斷，再選一次同一個檔就能接續。"));
+  }
+  if (importUi.error) nodes.push(el("p", { class: "bad" }, importUi.error));
+  if (importUi.summary && importBundle && importUi.phase !== "parsing") {
+    const summary = importUi.summary;
+    nodes.push(el("ul", { class: "counts" },
+      el("li", {}, "交易 " + summary.transactions + " 筆"),
+      el("li", {}, "發票品項 " + summary.receiptItems + " 筆"),
+      el("li", {}, "分類 " + summary.categories + "、帳戶 " + summary.accounts + "、專案 " + summary.projects),
+      el("li", {}, "可上傳照片 " + summary.photos + " 張" + (summary.missingPhotos ? "，缺檔 " + summary.missingPhotos + " 張" : "")),
+      el("li", {}, "略過已刪除 " + (summary.skipped.deleted || 0) + "、轉帳 " + (summary.skipped.transfer || 0) + (summary.badReceipt ? "、讀不到的發票檔 " + summary.badReceipt : ""))));
+  }
+  if (importUi.phase === "error" && importBundle && state.mode === "cloud") {
+    nodes.push(el("button", { type: "button", class: "primary", id: "import-go", onClick: go(() => runImportClick("resume")) }, "從中斷的地方繼續"));
+  } else if (importUi.phase === "ready" && importBundle) {
+    if (importUi.resume && state.mode === "cloud") {
+      nodes.push(el("p", {}, "這個檔案上次傳到一半。"));
+      nodes.push(el("button", { type: "button", class: "primary", id: "import-go", onClick: go(() => runImportClick("resume")) }, "繼續上傳"));
+      nodes.push(el("button", { type: "button", class: "secondary", onClick: go(() => runImportClick("restart")) }, "清空後重新上傳"));
+    } else {
+      nodes.push(el("button", { type: "button", class: "primary", id: "import-go", onClick: go(() => runImportClick("go")) }, state.mode === "local" ? "載入到這台手機" : "開始寫入"));
+    }
+  } else if (importUi.phase === "idle") {
+    nodes.push(el("p", { class: "muted" }, "選擇備份後會先顯示筆數，確認了才寫入。"));
+  }
+  host.replaceChildren.apply(host, nodes);
+}
+
+async function runImportClick(mode) {
+  if (!importBundle || importUi.phase === "uploading" || importUi.phase === "parsing") return;
+  if (state.mode === "local") { await importLocal(importBundle); return; }
+  if (state.mode !== "cloud") { toast("請先連上試算表，或改用本機試用"); return; }
+  const checkbox = document.getElementById("clear-first");
+  const resume = mode === "resume";
+  const clear = mode === "restart" || (!resume && checkbox && checkbox.checked);
+  importUi.phase = "uploading";
+  importUi.error = "";
+  paintImportStatus();
+  try {
+    await flushQueue();
+    if (state.pending) throw new Error("還有變更沒上傳。請先按立即上傳。");
+    await pushBundle(importBundle, { clear: !!clear, resume: resume, sig: importBundle.sig });
+    localStorage.removeItem(CP_KEY);
+    const count = importBundle.transactions.length;
+    importBundle = null;
+    importUi.phase = "done";
+    importUi.summary = null;
+    toast("已寫入 " + count + " 筆");
+    state.tab = "ledger";
+    await refreshCloud();
+  } catch (error) {
+    importUi.phase = "error";
+    importUi.error = messageOf(error);
+    importUi.resume = true;
+    state.syncing = false;
+    renderChrome();
+    paintImportStatus();
+  }
+}
+
+async function importLocal(bundle) {
+  const budget = state.data.settings.monthlyBudget || "";
+  const next = normalizeData({
+    transactions: bundle.transactions,
+    accounts: bundle.accounts,
+    projects: bundle.projects,
+    categories: bundle.categories,
+    receiptItems: bundle.receiptItems,
+    settings: { monthlyBudget: budget },
+  });
+  for (let i = 0; i < (bundle.photos || []).length; i++) {
+    const photo = bundle.photos[i];
+    if (photo.missing || !bundle.zip) continue;
+    const entry = bundle.zip.file(photo.path);
+    if (!entry) continue;
+    const id = "local:" + photo.uid;
+    await kvSet("photo:" + id, { mime: mimeFromName(photo.name), base64: await entry.async("base64"), name: photo.name });
+    const tx = next.transactions.find((item) => item.uid === photo.uid);
+    if (tx) tx.photoFileId = id;
+  }
+  state.data = next;
+  await saveSnapshot();
+  importBundle = null;
+  importUi.phase = "idle";
+  importUi.summary = null;
+  state.month = localISODate(new Date()).slice(0, 7);
+  state.tab = "ledger";
+  toast("已載入 " + next.transactions.length + " 筆到這台手機");
+  render();
+}
+
+function mimeFromName(name) {
+  if (/\.png$/i.test(name || "")) return "image/png";
+  if (/\.gif$/i.test(name || "")) return "image/gif";
+  if (/\.webp$/i.test(name || "")) return "image/webp";
+  return "image/jpeg";
+}
+
+function loadCheckpoint() {
+  try { return JSON.parse(localStorage.getItem(CP_KEY) || "null"); }
+  catch (error) { return null; }
+}
+
+function saveCheckpoint(checkpoint) {
+  try { localStorage.setItem(CP_KEY, JSON.stringify(checkpoint)); }
+  catch (error) {}
+}
+
+function reportImport(message) {
+  importUi.message = message;
+  state.syncing = true;
+  renderChrome();
+  paintImportStatus();
+}
+
+async function pushBundle(bundle, options) {
+  let checkpoint = options.resume ? loadCheckpoint() : null;
+  if (!checkpoint || checkpoint.sig !== options.sig) checkpoint = { sig: options.sig, cleared: false, progress: {} };
+  if (options.clear && !checkpoint.cleared) {
+    for (let i = 0; i < IMPORT_CLEAR_SHEETS.length; i++) {
+      reportImport("清空 " + IMPORT_CLEAR_SHEETS[i]);
+      await api("clear", { sheet: IMPORT_CLEAR_SHEETS[i] }, 60000);
+    }
+    checkpoint.cleared = true;
+    checkpoint.progress = {};
+    saveCheckpoint(checkpoint);
+  }
+  const stages = [
+    ["accounts", "Accounts", bundle.accounts, accountToRow, "帳戶"],
+    ["projects", "Projects", bundle.projects, projectToRow, "專案"],
+    ["categories", "Categories", bundle.categories, categoryToRow, "分類"],
+    ["transactions", "Transactions", bundle.transactions, txToRow, "交易"],
+    ["receiptItems", "ReceiptItems", bundle.receiptItems, itemToRow, "發票品項"],
+  ];
+  for (let s = 0; s < stages.length; s++) {
+    const key = stages[s][0];
+    const rows = stages[s][2].map(stages[s][3]);
+    let index = checkpoint.progress[key] || 0;
+    while (index < rows.length) {
+      const chunk = rows.slice(index, index + BATCH_SIZE);
+      reportImport(stages[s][4] + " " + Math.min(index + chunk.length, rows.length) + " / " + rows.length);
+      await api("append", { sheet: stages[s][1], rows: chunk }, 90000);
+      index += chunk.length;
+      checkpoint.progress[key] = index;
+      saveCheckpoint(checkpoint);
+    }
+  }
+  const photos = bundle.photos || [];
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
+    if (photo.missing || checkpoint.progress["photo:" + photo.uid]) continue;
+    let base64 = photo.base64 || "";
+    if (!base64 && bundle.zip && photo.path) {
+      const entry = bundle.zip.file(photo.path);
+      if (entry) base64 = await entry.async("base64");
+    }
+    if (!base64) continue;
+    reportImport("上傳照片 " + photo.name);
+    const uploaded = await api("uploadPhoto", { name: photo.uid + "-" + photo.name, mime: photo.mime || mimeFromName(photo.name), base64: base64 }, 60000);
+    const tx = bundle.transactions.find((item) => item.uid === photo.uid);
+    if (tx) {
+      const row = publicTx(tx);
+      row.photoFileId = uploaded.fileId;
+      await api("upsertTx", { row: row }, 60000);
+    }
+    checkpoint.progress["photo:" + photo.uid] = uploaded.fileId;
+    saveCheckpoint(checkpoint);
+  }
+  state.syncing = false;
+}
+
+async function boot() {
+  state.online = navigator.onLine;
+  try {
+    const snap = await kvGet("snapshot");
+    if (snap && typeof snap === "object") state.data = normalizeData(snap);
+    const queue = (await kvGet("queue")) || [];
+    state.pending = queue.length;
+    queue.forEach((op) => applyOp(state.data, op));
+  } catch (error) {
+    state.loadError = "讀不到這台手機上的備份";
+  }
+  const url = (localStorage.getItem("apiUrl") || "").trim();
+  const token = localStorage.getItem("apiToken") || "";
+  if (url && token) state.mode = "cloud";
+  else if (localStorage.getItem("ledgerMode") === "local") state.mode = "local";
+  else state.mode = "unset";
+  state.month = localISODate(new Date()).slice(0, 7);
+  state.booting = false;
+  render();
+  if (state.mode === "cloud") refreshCloud();
+}
+
+document.getElementById("fab").addEventListener("click", () => openForm(null));
+document.getElementById("tabbar").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-tab]");
+  if (!button) return;
+  state.tab = button.dataset.tab;
+  state.overlay = null;
+  render();
+});
+document.getElementById("topbar").addEventListener("click", (event) => {
+  if (event.target.closest("#month-prev")) state.month = shiftMonth(state.month, -1);
+  else if (event.target.closest("#month-next")) state.month = shiftMonth(state.month, 1);
+  else return;
+  state.query = "";
+  render();
+});
+document.addEventListener("keydown", (event) => {
+  if (!state.overlay) {
+    if (event.key === "Escape") return;
+    return;
+  }
+  if (event.key === "Escape") { closeSheet(); return; }
+  if (!state.form || state.overlay.type !== "form") return;
+  if (event.target.closest && event.target.closest("input, textarea, select")) return;
+  if (/^[0-9.]$/.test(event.key) || event.key === "Backspace") {
+    event.preventDefault();
+    pushDigit(event.key === "Backspace" ? "⌫" : event.key);
+    paintAmount();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    saveForm();
+  }
+});
+window.addEventListener("online", () => { state.online = true; if (state.mode === "cloud") refreshCloud(); else render(); });
+window.addEventListener("offline", () => { state.online = false; render(); });
+window.addEventListener("error", (event) => {
+  const view = document.getElementById("view");
+  if (state.booting && view) view.textContent = "畫面打不開：" + (event.message || "");
+});
+if (!Element.prototype.replaceChildren) {
+  Element.prototype.replaceChildren = function () {
+    while (this.firstChild) this.removeChild(this.firstChild);
+    this.append.apply(this, arguments);
+  };
+}
+boot().catch((error) => {
+  const view = document.getElementById("view");
+  if (view) view.textContent = "畫面打不開：" + messageOf(error);
+});
 </script>
 </body>
 </html>
