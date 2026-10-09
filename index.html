@@ -34,12 +34,25 @@ button.danger{background:var(--exp);color:#fff;border:0;border-radius:8px;paddin
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--text);width:min(92vw,460px);padding:16px}
 dialog::backdrop{background:#0008}
 pre{white-space:pre-wrap;font-size:12px;background:var(--bg);padding:8px;border-radius:8px;max-height:200px;overflow:auto}
+.ic{width:36px;height:36px;border-radius:18px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.seg{display:flex;gap:6px;margin-bottom:8px}.seg button{flex:1;padding:8px;border:1px solid var(--line);border-radius:8px;background:none}.seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#fAmount{font-size:30px;font-weight:600;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.cat{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px;border:1px solid var(--line);border-radius:10px;background:none;font-size:12px}
+.cat span{font-size:22px}.cat.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{padding:5px 11px;border:1px solid var(--line);border-radius:16px;background:none;font-size:13px}.chip.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.lbl{font-size:12px;color:var(--sub);margin:4px 0}
+#formDlg{max-height:92vh;overflow:auto}
+#status{font-size:12px;color:var(--sub);text-align:right;margin:0 4px 6px}
+.proj{cursor:pointer}.proj b{font-size:17px}
 table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right}
 </style>
 </head>
 <body>
 <main>
   <section id="tab-list">
+    <div id="status"></div>
     <div class="card row">
       <button class="ghost" id="prev">‹</button>
       <input type="month" id="month" class="grow" style="margin:0">
@@ -55,19 +68,9 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
 
   <section id="tab-stats" class="hidden">
     <div class="card"><h2>本月支出分類</h2><div id="catStats"></div></div>
-    <div class="card"><h2>專案花費（全部期間）</h2><table id="projStats"></table></div>
   </section>
 
-  <section id="tab-import" class="hidden">
-    <div class="card">
-      <h2>匯入 CostDiary 備份 (.cddb)</h2>
-      <p class="sub">檔案只會在你的瀏覽器中解析，再傳到你自己的 Google Sheet / Drive。</p>
-      <input type="file" id="file">
-      <pre id="importLog">尚未選擇檔案</pre>
-      <label class="row"><input type="checkbox" id="wipe" checked style="width:auto;margin:0"> 上傳前先清空 Sheet 現有資料（避免重複匯入）</label>
-      <p><button class="btn" id="upload" disabled>上傳到 Google Sheet</button></p>
-    </div>
-  </section>
+  <section id="tab-projects" class="hidden"><div id="projList"></div></section>
 
   <section id="tab-settings" class="hidden">
     <div class="card">
@@ -78,6 +81,14 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
       <input id="cfgToken" type="password">
       <button class="btn" id="saveCfg">儲存並連線</button>
       <p class="sub" id="cfgMsg"></p>
+    </div>  
+    <div class="card">
+      <h2>匯入 CostDiary 備份 (.cddb)</h2>
+      <p class="sub">檔案只會在你的瀏覽器中解析，再傳到你自己的 Google Sheet / Drive。</p>
+      <input type="file" id="file">
+      <pre id="importLog">尚未選擇檔案</pre>
+      <label class="row"><input type="checkbox" id="wipe" checked style="width:auto;margin:0"> 上傳前先清空 Sheet 現有資料（避免重複匯入）</label>
+      <p><button class="btn" id="upload" disabled>上傳到 Google Sheet</button></p>
     </div>
   </section>
 </main>
@@ -85,22 +96,27 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
 <nav>
   <button data-tab="list" class="on">明細</button>
   <button data-tab="stats">統計</button>
-  <button data-tab="import">匯入</button>
+  <button data-tab="projects">專案</button>
   <button data-tab="settings">設定</button>
 </nav>
 <button class="btn" id="fab" style="position:fixed;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:26px;font-size:26px;padding:0">＋</button>
 
 <dialog id="formDlg">
-  <h2 id="formTitle">新增</h2>
-  <select id="fType"><option value="expense">支出</option><option value="income">收入</option></select>
+  <div class="seg"><button type="button" id="fTypeExp">支出</button><button type="button" id="fTypeInc">收入</button></div>
+  <input id="fAmount" type="number" inputmode="decimal" placeholder="0">
+  <div class="lbl" id="fFreqLbl">常用</div><div class="chips" id="fFreq"></div>
+  <div class="lbl">分類</div><div class="grid" id="fGrid"></div>
+  <div class="chips" id="fSub"></div>
   <input id="fDate" type="date">
-  <input id="fAmount" type="number" inputmode="decimal" placeholder="金額">
-  <select id="fC1"></select>
-  <select id="fC2"></select>
   <select id="fAcc"></select>
   <select id="fProj"></select>
   <input id="fMemo" placeholder="備註">
   <div class="row"><button class="ghost" id="fCancel">取消</button><span class="grow"></span><button class="btn" id="fSave">儲存</button></div>
+</dialog>
+
+<dialog id="projDlg">
+  <div id="projBody"></div>
+  <div class="row" style="margin-top:12px"><span class="grow"></span><button class="ghost" id="pClose">關閉</button></div>
 </dialog>
 
 <dialog id="detailDlg">
@@ -141,15 +157,30 @@ const TX_KEYS = ['uid','date','type','amount','accountId','class1','class2','pro
 const txToRow = t => TX_KEYS.map(k => t[k] ?? '');
 const rowToTx = r => Object.fromEntries(TX_KEYS.map((k, i) => [k, k === 'amount' ? Number(r[i]) : String(r[i] ?? '')]));
 
+/* ---------- 離線快取 (IndexedDB) ---------- */
+const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('expense', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function cacheSet(k, v) { try { const db = await idbOpen(); await new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); } catch {} }
+async function cacheGet(k) { try { const db = await idbOpen(); return await new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); } catch { return undefined; } }
+const saveCache = () => cacheSet('data', { D, at: Date.now() });
+const setStatus = t => { $('#status').textContent = t; };
+const hhmm = ms => new Date(ms).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+
 async function loadAll() {
-  const { data } = await api('all');
-  D.tx = data.Transactions.map(rowToTx);
-  D.accounts = data.Accounts.map(r => ({ id: String(r[0]), name: r[1] }));
-  D.projects = data.Projects.map(r => ({ id: String(r[0]), name: r[1] }));
-  D.cats = data.Categories.map(r => ({ id: String(r[0]), level: Number(r[1]), parent: String(r[2]), kind: r[3], name: r[4], order: Number(r[6]) }))
-                          .sort((a, b) => a.order - b.order);
-  D.items = data.ReceiptItems;
-  render();
+  setStatus('同步中…');
+  try {
+    const { data } = await api('all');
+    D.tx = data.Transactions.map(rowToTx);
+    D.accounts = data.Accounts.map(r => ({ id: String(r[0]), name: r[1] }));
+    D.projects = data.Projects.map(r => ({ id: String(r[0]), name: r[1] }));
+    D.cats = data.Categories.map(r => ({ id: String(r[0]), level: Number(r[1]), parent: String(r[2]), kind: r[3], name: r[4], icon: r[5], order: Number(r[6]) }))
+                            .sort((a, b) => a.order - b.order);
+    D.items = data.ReceiptItems;
+    saveCache(); setStatus('已同步 ' + hhmm(Date.now()));
+    render();
+  } catch (e) {
+    setStatus(D.tx.length ? '離線中，顯示上次同步的資料' : '連線失敗');
+    throw e;
+  }
 }
 
 /* ---------- 查表 ---------- */
@@ -157,6 +188,8 @@ const c1 = id => D.cats.find(c => c.level === 1 && c.id === String(id));
 const c2 = id => D.cats.find(c => c.level === 2 && c.id === String(id));
 const accName = id => D.accounts.find(a => a.id === String(id))?.name ?? '';
 const projName = id => D.projects.find(p => p.id === String(id))?.name ?? '';
+const ICONS = { i_class_finance: '💰', i_class_stock: '📈', i_class_food: '🍜', i_class_bus: '🚌', i_class_book: '📚', i_class_tshirt: '👕', i_class_game: '🎮', i_class_fine: '🧾', i_class_house: '🏠', i_class_gas: '⛽', i_class_health: '🏥', i_class_travel: '✈️', i_class_coin: '🪙', i_class_pet: '🐾', i_class_education: '🎓', i_class_gift: '🎁', i_class_mobile: '📱', i_class_office: '💼' };
+const emojiOf = cat => ICONS[cat?.icon] || '🏷️';
 const catLabel = t => [c1(t.class1)?.name, c2(t.class2)?.name].filter(Boolean).join(' › ') || '未分類';
 
 /* ---------- 明細 / 統計 ---------- */
@@ -172,49 +205,69 @@ function render() {
   let html = '', lastDay = '';
   for (const t of list) {
     if (t.date !== lastDay) { html += `<div class="day">${t.date}</div>`; lastDay = t.date; }
-    html += `<div class="tx" data-uid="${esc(t.uid)}"><div class="grow"><div>${esc(catLabel(t))}</div><div class="sub">${esc(t.memo)}${t.projectId ? ' · ' + esc(projName(t.projectId)) : ''}</div></div><b class="${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}</b></div>`;
+    html += `<div class="tx" data-uid="${esc(t.uid)}"><div class="ic">${emojiOf(c1(t.class1))}</div><div class="grow"><div>${esc(catLabel(t))}</div><div class="sub">${esc(t.memo)}${t.projectId ? ' · ' + esc(projName(t.projectId)) : ''}</div></div><b class="${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}</b></div>`;
   }
   $('#list').innerHTML = html || '<div class="sub">這個月沒有紀錄</div>';
 
   // 統計：本月支出分類
   const byCat = {};
-  list.filter(t => t.type === 'expense').forEach(t => { const k = c1(t.class1)?.name || '未分類'; byCat[k] = (byCat[k] || 0) + t.amount; });
+  list.filter(t => t.type === 'expense').forEach(t => { const k = (emojiOf(c1(t.class1)) + ' ' + (c1(t.class1)?.name || '未分類')); byCat[k] = (byCat[k] || 0) + t.amount; });
   const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const max = entries[0]?.[1] || 1;
   $('#catStats').innerHTML = entries.map(([k, v]) => `<div style="margin-bottom:8px"><div class="row"><span class="grow">${esc(k)}</span><b>${fmt(v)}</b></div><div class="bar" style="width:${v / max * 100}%"></div></div>`).join('') || '<div class="sub">沒有資料</div>';
 
-  const byProj = {};
-  D.tx.filter(t => t.projectId && t.type === 'expense').forEach(t => byProj[t.projectId] = (byProj[t.projectId] || 0) + t.amount);
-  $('#projStats').innerHTML = Object.entries(byProj).sort((a, b) => b[1] - a[1]).map(([id, v]) => `<tr><td>${esc(projName(id))}</td><td>${fmt(v)}</td></tr>`).join('') || '<tr><td class="sub">沒有專案資料</td></tr>';
+  renderProjects();
 }
 
-/* ---------- 新增 / 編輯 ---------- */
+/* ---------- 新增 / 編輯（快速輸入） ---------- */
+const F = { type: 'expense', c1: '', c2: '' };
 function fillSelect(sel, opts, blank) { sel.innerHTML = (blank ? `<option value="">${blank}</option>` : '') + opts.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join(''); }
-function refreshC1() { fillSelect($('#fC1'), D.cats.filter(c => c.level === 1 && c.kind === $('#fType').value)); refreshC2(); }
-function refreshC2() { fillSelect($('#fC2'), D.cats.filter(c => c.level === 2 && c.parent === $('#fC1').value), '（無子分類）'); }
+
+function freqCombos(type) {
+  const since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
+  const cnt = {};
+  D.tx.filter(t => t.type === type && t.date >= since && c1(t.class1)).forEach(t => { const k = t.class1 + '|' + t.class2; cnt[k] = (cnt[k] || 0) + 1; });
+  return Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k.split('|'));
+}
+
+function renderForm() {
+  $('#fTypeExp').classList.toggle('on', F.type === 'expense');
+  $('#fTypeInc').classList.toggle('on', F.type === 'income');
+  const freq = freqCombos(F.type);
+  $('#fFreqLbl').classList.toggle('hidden', !freq.length);
+  $('#fFreq').innerHTML = freq.map(([a, b]) => `<button type="button" class="chip" data-a="${esc(a)}" data-b="${esc(b)}">${emojiOf(c1(a))} ${esc((c2(b) || c1(a)).name)}</button>`).join('');
+  $('#fGrid').innerHTML = D.cats.filter(c => c.level === 1 && c.kind === F.type)
+    .map(c => `<button type="button" class="cat ${c.id === F.c1 ? 'on' : ''}" data-id="${esc(c.id)}"><span>${emojiOf(c)}</span>${esc(c.name)}</button>`).join('');
+  const subs = F.c1 ? D.cats.filter(c => c.level === 2 && c.parent === F.c1) : [];
+  $('#fSub').innerHTML = subs.length ? `<button type="button" class="chip ${F.c2 === '' ? 'on' : ''}" data-id="">不分</button>` +
+    subs.map(c => `<button type="button" class="chip ${c.id === F.c2 ? 'on' : ''}" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join('') : '';
+}
 
 function openForm(t) {
   editing = t || null;
-  $('#formTitle').textContent = t ? '編輯' : '新增';
+  F.type = t?.type || 'expense'; F.c1 = t?.class1 || ''; F.c2 = t?.class2 || '';
   fillSelect($('#fAcc'), D.accounts);
   fillSelect($('#fProj'), D.projects, '（無專案）');
-  $('#fType').value = t?.type || 'expense';
-  refreshC1();
+  const lastAcc = t?.accountId || localStorage.getItem('lastAcc') || D.tx.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.accountId;
+  if (lastAcc && D.accounts.some(a => a.id === lastAcc)) $('#fAcc').value = lastAcc;
+  $('#fProj').value = t?.projectId || '';
   $('#fDate').value = t?.date || new Date().toISOString().slice(0, 10);
   $('#fAmount').value = t?.amount ?? '';
-  if (t) { $('#fC1').value = t.class1; refreshC2(); $('#fC2').value = t.class2; $('#fAcc').value = t.accountId; $('#fProj').value = t.projectId; }
   $('#fMemo').value = t?.memo || '';
+  renderForm();
   $('#formDlg').showModal();
+  if (!t) setTimeout(() => $('#fAmount').focus(), 50);
 }
 
 async function saveForm() {
   const amount = Number($('#fAmount').value);
   if (!amount || amount <= 0) return alert('請輸入金額');
+  if (!F.c1) return alert('請選擇分類');
   const now = new Date().toISOString();
   const t = {
     uid: editing?.uid || 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    date: $('#fDate').value, type: $('#fType').value, amount,
-    accountId: $('#fAcc').value, class1: $('#fC1').value, class2: $('#fC2').value, projectId: $('#fProj').value,
+    date: $('#fDate').value, type: F.type, amount,
+    accountId: $('#fAcc').value, class1: F.c1, class2: F.c2, projectId: $('#fProj').value,
     memo: $('#fMemo').value, invoiceId: editing?.invoiceId || '', photoFileId: editing?.photoFileId || '',
     createdAt: editing?.createdAt || now, modifiedAt: now
   };
@@ -223,10 +276,45 @@ async function saveForm() {
     await api('upsertTx', { row: txToRow(t) });
     const i = D.tx.findIndex(x => x.uid === t.uid);
     if (i >= 0) D.tx[i] = t; else D.tx.push(t);
+    localStorage.setItem('lastAcc', t.accountId);
     curMonth = t.date.slice(0, 7);
-    $('#formDlg').close(); render();
+    saveCache(); $('#formDlg').close(); render();
   } catch (e) { alert('儲存失敗：' + e.message); }
   $('#fSave').disabled = false;
+}
+
+/* ---------- 專案頁 ---------- */
+function projectStats() {
+  const m = {};
+  D.tx.filter(t => t.projectId && t.type === 'expense').forEach(t => {
+    const p = m[t.projectId] ||= { id: t.projectId, total: 0, n: 0, days: new Set(), last: '', first: '9999', byCat: {}, tx: [] };
+    p.total += t.amount; p.n++; p.days.add(t.date); p.tx.push(t);
+    if (t.date > p.last) p.last = t.date; if (t.date < p.first) p.first = t.date;
+    const k = emojiOf(c1(t.class1)) + ' ' + (c1(t.class1)?.name || '未分類');
+    p.byCat[k] = (p.byCat[k] || 0) + t.amount;
+  });
+  return Object.values(m).sort((a, b) => b.last.localeCompare(a.last));
+}
+
+function renderProjects() {
+  const list = projectStats();
+  $('#projList').innerHTML = list.map(p => `<div class="card proj" data-id="${esc(p.id)}">
+      <div class="row"><span class="grow">${esc(projName(p.id))}</span><b class="exp">${fmt(p.total)}</b></div>
+      <div class="sub">${p.first} ~ ${p.last} · ${p.n} 筆 · 記帳 ${p.days.size} 天 · 每記帳日平均 ${fmt(p.total / p.days.size)}</div></div>`).join('')
+    || '<div class="card sub">還沒有專案資料</div>';
+}
+
+function openProject(id) {
+  const p = projectStats().find(x => x.id === id); if (!p) return;
+  const cats = Object.entries(p.byCat).sort((a, b) => b[1] - a[1]);
+  const max = cats[0]?.[1] || 1;
+  $('#projBody').innerHTML = `<h2>${esc(projName(id))}</h2>
+    <div class="exp" style="font-size:24px;font-weight:600">${fmt(p.total)}</div>
+    <p class="sub">${p.first} ~ ${p.last} · 記帳 ${p.days.size} 天 · 每記帳日平均 ${fmt(p.total / p.days.size)}</p>
+    ${cats.map(([k, v]) => `<div style="margin-bottom:8px"><div class="row"><span class="grow">${esc(k)}</span><b>${fmt(v)}</b><span class="sub">${Math.round(v / p.total * 100)}%</span></div><div class="bar" style="width:${v / max * 100}%"></div></div>`).join('')}
+    <h2 style="margin-top:14px">明細</h2>
+    <table>${p.tx.sort((a, b) => a.date.localeCompare(b.date)).map(t => `<tr><td>${t.date.slice(5)} ${esc(catLabel(t))}<div class="sub">${esc(t.memo)}</div></td><td>${fmt(t.amount)}</td></tr>`).join('')}</table>`;
+  $('#projDlg').showModal();
 }
 
 /* ---------- 詳情 ---------- */
@@ -347,13 +435,19 @@ $('#prev').onclick = () => shiftMonth(-1); $('#next').onclick = () => shiftMonth
 $('#month').onchange = e => { if (e.target.value) { curMonth = e.target.value; render(); } };
 $('#list').addEventListener('click', e => { const el = e.target.closest('.tx'); if (el) openDetail(el.dataset.uid); });
 $('#fab').onclick = () => openForm();
-$('#fType').onchange = refreshC1; $('#fC1').onchange = refreshC2;
+$('#fTypeExp').onclick = () => { F.type = 'expense'; F.c1 = F.c2 = ''; renderForm(); };
+$('#fTypeInc').onclick = () => { F.type = 'income'; F.c1 = F.c2 = ''; renderForm(); };
+$('#fFreq').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) { F.c1 = b.dataset.a; F.c2 = b.dataset.b; renderForm(); } });
+$('#fGrid').addEventListener('click', e => { const b = e.target.closest('.cat'); if (b) { F.c1 = b.dataset.id; F.c2 = ''; renderForm(); } });
+$('#fSub').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) { F.c2 = b.dataset.id; renderForm(); } });
+$('#projList').addEventListener('click', e => { const el = e.target.closest('.proj'); if (el) openProject(el.dataset.id); });
+$('#pClose').onclick = () => $('#projDlg').close();
 $('#fCancel').onclick = () => $('#formDlg').close(); $('#fSave').onclick = saveForm;
 $('#dClose').onclick = () => $('#detailDlg').close();
 $('#dEdit').onclick = () => { $('#detailDlg').close(); openForm(viewing); };
 $('#dDelete').onclick = async () => {
   if (!confirm('確定刪除這筆紀錄？')) return;
-  try { await api('deleteTx', { uid: viewing.uid }); D.tx = D.tx.filter(t => t.uid !== viewing.uid); $('#detailDlg').close(); render(); }
+  try { await api('deleteTx', { uid: viewing.uid }); D.tx = D.tx.filter(t => t.uid !== viewing.uid); saveCache(); $('#detailDlg').close(); render(); }
   catch (e) { alert(e.message); }
 };
 $('#saveCfg').onclick = async () => {
@@ -365,8 +459,12 @@ $('#saveCfg').onclick = async () => {
 };
 
 $('#cfgUrl').value = cfg.url; $('#cfgToken').value = cfg.token;
-render();
-if (cfg.url) loadAll().catch(e => { $('#cfgMsg').textContent = '❌ ' + e.message; });
+(async () => {
+  const c = await cacheGet('data');
+  if (c?.D) { D = c.D; render(); setStatus('顯示上次資料（' + hhmm(c.at) + '），同步中…'); }
+  else render();
+  if (cfg.url) loadAll().catch(e => { $('#cfgMsg').textContent = '❌ ' + e.message; });
+})();
 </script>
 </body>
 </html>
