@@ -257,7 +257,7 @@
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
 <script>
-const APP_VERSION = "20261009-1444";
+const APP_VERSION = "20261009-2034";
 const REQUIRES_BACKEND = "20261009-1415";
 
 /*__PURE_START__*/
@@ -721,15 +721,40 @@ function findById(list, id) {
   return (list || []).find((item) => String(item.id) === String(id)) || null;
 }
 
+function categoryByLevel(data, id, level) {
+  if (id == null || id === "") return null;
+  return (data.categories || []).find((cat) => String(cat.id) === String(id) && String(cat.level) === String(level)) || null;
+}
+
+function resolveSubSelection(data, id) {
+  const sub = categoryByLevel(data, id, "2");
+  if (!sub) return null;
+  return { class1: String(sub.parentId || ""), class2: String(sub.id) };
+}
+
+function pairLabel(data, key) {
+  const bits = String(key || "").split("|");
+  const main = categoryByLevel(data, bits[0], "1");
+  const sub = bits[1] ? categoryByLevel(data, bits[1], "2") : null;
+  const cat = sub || main;
+  return {
+    class1: bits[0] || "",
+    class2: bits[1] || "",
+    name: (sub && sub.name) || (main && main.name) || "未分類",
+    icon: cat ? cat.icon : "",
+    iconName: ((sub && sub.name) || "") + " " + ((main && main.name) || ""),
+  };
+}
+
 function txTitle(data, tx) {
-  const sub = findById(data.categories, tx.class2);
-  const main = findById(data.categories, tx.class1);
+  const sub = categoryByLevel(data, tx.class2, "2");
+  const main = categoryByLevel(data, tx.class1, "1");
   return (sub && sub.name) || (main && main.name) || "未分類";
 }
 
 function txEmoji(data, tx) {
-  const sub = findById(data.categories, tx.class2);
-  const main = findById(data.categories, tx.class1);
+  const sub = categoryByLevel(data, tx.class2, "2");
+  const main = categoryByLevel(data, tx.class1, "1");
   const cat = sub || main;
   return iconFor(cat && cat.icon, ((sub && sub.name) || "") + " " + ((main && main.name) || ""));
 }
@@ -748,8 +773,8 @@ function searchTransactions(data, query) {
   return data.transactions.filter((tx) => {
     const hay = [
       tx.memo, tx.amount, tx.date, tx.invoiceId,
-      (findById(data.categories, tx.class1) || {}).name,
-      (findById(data.categories, tx.class2) || {}).name,
+      (categoryByLevel(data, tx.class1, "1") || {}).name,
+      (categoryByLevel(data, tx.class2, "2") || {}).name,
       (findById(data.projects, tx.projectId) || {}).name,
       (findById(data.accounts, tx.accountId) || {}).name,
       (items.get(String(tx.invoiceId || "")) || []).join(" "),
@@ -818,7 +843,7 @@ function categoryBreakdown(data, txs, kind) {
   (txs || []).forEach((tx) => {
     if (kind && tx.type !== kind) return;
     const id = String(tx.class1 || "");
-    const cat = findById(data.categories, id);
+    const cat = categoryByLevel(data, id, "1");
     const current = map.get(id) || { id: id, name: cat ? cat.name : "未分類", amount: 0 };
     current.amount = round2(current.amount + (Number(tx.amount) || 0));
     map.set(id, current);
@@ -935,6 +960,7 @@ if (typeof window === "undefined") {
     mapMainRow, mapAccount, mapProject, mapClass1, mapClass2, inheritKind, mapReceipt, currencyCode,
     emptyData, applyOp, normalizeData, searchTransactions, searchLimited, budgetStatus, sumMonth,
     frequentPairs, projectStats, categoryBreakdown, groupByDate, planPhotos, receiptPathId,
+    categoryByLevel, resolveSubSelection, pairLabel, txTitle,
     starterData, buildDemo, batches, mainCats, subCats,
   };
 }
@@ -1808,7 +1834,7 @@ function projectSelect() {
 
 function setType(type) {
   state.form.type = type;
-  const cat = findById(state.data.categories, state.form.class1);
+  const cat = categoryByLevel(state.data, state.form.class1, "1");
   if (!cat || cat.kind !== type) {
     state.form.class1 = "";
     state.form.class2 = "";
@@ -1866,13 +1892,10 @@ function paintFrequent() {
     return;
   }
   host.replaceChildren.apply(host, pairs.map((pair) => {
-    const bits = pair[0].split("|");
-    const main = findById(state.data.categories, bits[0]);
-    const sub = findById(state.data.categories, bits[1]);
-    const cat = sub || main;
-    const pressed = String(state.form.class1) === bits[0] && String(state.form.class2 || "") === (bits[1] || "");
-    return el("button", { type: "button", class: "chip", "aria-pressed": pressed ? "true" : "false", onClick: () => selectPair(pair[0]) },
-      iconFor(cat && cat.icon, (sub && sub.name) || (main && main.name) || "") + " " + ((sub && sub.name) || (main && main.name) || "未分類"));
+    const label = pairLabel(state.data, pair[0]);
+    const pressed = String(state.form.class1) === label.class1 && String(state.form.class2 || "") === label.class2;
+    return el("button", { type: "button", class: "chip", "aria-pressed": pressed ? "true" : "false", onClick: () => selectPair(label.class1 + "|" + label.class2) },
+      iconFor(label.icon, label.iconName) + " " + label.name);
   }));
 }
 
@@ -1908,10 +1931,10 @@ function selectCategory(level, id) {
     const subs = subCats(state.data, id);
     if (!subs.some((cat) => String(cat.id) === String(state.form.class2))) state.form.class2 = subs.length === 1 ? subs[0].id : "";
   } else {
-    const sub = findById(state.data.categories, id);
-    if (!sub) return;
-    state.form.class2 = sub.id;
-    state.form.class1 = sub.parentId;
+    const picked = resolveSubSelection(state.data, id);
+    if (!picked) return;
+    state.form.class2 = picked.class2;
+    state.form.class1 = picked.class1;
   }
   paintFrequent();
   paintCats();
@@ -2056,8 +2079,8 @@ function renderDetail(uid) {
   const tx = state.data.transactions.find((item) => item.uid === String(uid));
   if (!tx) return sheetFrame("明細", el("p", {}, "找不到這筆帳"));
   const items = state.data.receiptItems.filter((item) => String(item.invoiceId) === String(tx.invoiceId || ""));
-  const main = findById(state.data.categories, tx.class1);
-  const sub = findById(state.data.categories, tx.class2);
+  const main = categoryByLevel(state.data, tx.class1, "1");
+  const sub = categoryByLevel(state.data, tx.class2, "2");
   const body = el("div", {},
     el("p", { class: "hero-num " + tx.type }, (tx.type === "income" ? "＋" : "") + formatMoney(tx.amount), el("span", { class: "unit" }, "元")),
     detailRow("類型", tx.type === "income" ? "收入" : "支出"),
