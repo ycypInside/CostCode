@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="記帳">
+<title>記帳</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1c1e21;--sub:#6b7280;--line:#e5e7eb;--accent:#2563eb;--inc:#16a34a;--exp:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1a1d23;--text:#e8eaed;--sub:#9aa0a6;--line:#2a2e36;--accent:#60a5fa;--inc:#4ade80;--exp:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC",sans-serif;padding:env(safe-area-inset-top) 0 calc(64px + env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto;padding:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+h2{font-size:16px;margin:0 0 8px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--sub);padding:12px 0;font-size:14px}
+nav button.on{color:var(--accent);font-weight:600}
+input,select,button,textarea{font:inherit;color:inherit}
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);margin:2px 0 8px}
+button.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px}
+button.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+button.danger{background:var(--exp);color:#fff;border:0;border-radius:8px;padding:9px 14px}
+.row{display:flex;align-items:center;gap:8px}
+.grow{flex:1;min-width:0}
+.sub{color:var(--sub);font-size:13px}
+.inc{color:var(--inc)}.exp{color:var(--exp)}
+.tx{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+.tx:last-child{border:0}
+.day{font-size:13px;color:var(--sub);padding:8px 0 2px}
+.bar{height:6px;background:var(--accent);border-radius:3px;margin-top:3px;opacity:.7}
+.hidden{display:none}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--text);width:min(92vw,460px);padding:16px}
+dialog::backdrop{background:#0008}
+pre{white-space:pre-wrap;font-size:12px;background:var(--bg);padding:8px;border-radius:8px;max-height:200px;overflow:auto}
+table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right}
+</style>
+</head>
+<body>
+<main>
+  <section id="tab-list">
+    <div class="card row">
+      <button class="ghost" id="prev">‹</button>
+      <input type="month" id="month" class="grow" style="margin:0">
+      <button class="ghost" id="next">›</button>
+    </div>
+    <div class="card row" style="justify-content:space-around">
+      <div>收入<br><b class="inc" id="sumInc">0</b></div>
+      <div>支出<br><b class="exp" id="sumExp">0</b></div>
+      <div>結餘<br><b id="sumNet">0</b></div>
+    </div>
+    <div class="card" id="list"></div>
+  </section>
+
+  <section id="tab-stats" class="hidden">
+    <div class="card"><h2>本月支出分類</h2><div id="catStats"></div></div>
+    <div class="card"><h2>專案花費（全部期間）</h2><table id="projStats"></table></div>
+  </section>
+
+  <section id="tab-import" class="hidden">
+    <div class="card">
+      <h2>匯入 CostDiary 備份 (.cddb)</h2>
+      <p class="sub">檔案只會在你的瀏覽器中解析，再傳到你自己的 Google Sheet / Drive。</p>
+      <input type="file" id="file">
+      <pre id="importLog">尚未選擇檔案</pre>
+      <label class="row"><input type="checkbox" id="wipe" checked style="width:auto;margin:0"> 上傳前先清空 Sheet 現有資料（避免重複匯入）</label>
+      <p><button class="btn" id="upload" disabled>上傳到 Google Sheet</button></p>
+    </div>
+  </section>
+
+  <section id="tab-settings" class="hidden">
+    <div class="card">
+      <h2>連線設定</h2>
+      <label class="sub">Apps Script 網頁應用程式網址 (結尾為 /exec)</label>
+      <input id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec">
+      <label class="sub">TOKEN（與 Script Properties 中設定的相同）</label>
+      <input id="cfgToken" type="password">
+      <button class="btn" id="saveCfg">儲存並連線</button>
+      <p class="sub" id="cfgMsg"></p>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="list" class="on">明細</button>
+  <button data-tab="stats">統計</button>
+  <button data-tab="import">匯入</button>
+  <button data-tab="settings">設定</button>
+</nav>
+<button class="btn" id="fab" style="position:fixed;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));width:52px;height:52px;border-radius:26px;font-size:26px;padding:0">＋</button>
+
+<dialog id="formDlg">
+  <h2 id="formTitle">新增</h2>
+  <select id="fType"><option value="expense">支出</option><option value="income">收入</option></select>
+  <input id="fDate" type="date">
+  <input id="fAmount" type="number" inputmode="decimal" placeholder="金額">
+  <select id="fC1"></select>
+  <select id="fC2"></select>
+  <select id="fAcc"></select>
+  <select id="fProj"></select>
+  <input id="fMemo" placeholder="備註">
+  <div class="row"><button class="ghost" id="fCancel">取消</button><span class="grow"></span><button class="btn" id="fSave">儲存</button></div>
+</dialog>
+
+<dialog id="detailDlg">
+  <div id="detailBody"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="danger" id="dDelete">刪除</button><span class="grow"></span>
+    <button class="ghost" id="dEdit">編輯</button><button class="ghost" id="dClose">關閉</button>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+<script>
+const SQLJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => Math.round(n).toLocaleString('zh-TW');
+const cfg = { url: localStorage.getItem('apiUrl') || '', token: localStorage.getItem('apiToken') || '' };
+
+let D = { tx: [], accounts: [], projects: [], cats: [], items: [] };
+let curMonth = new Date().toISOString().slice(0, 7);
+let editing = null, viewing = null, parsed = null;
+
+/* ---------- API ---------- */
+async function api(action, payload = {}) {
+  if (!cfg.url) throw new Error('請先到「設定」填入網址');
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 避免 CORS preflight
+    body: JSON.stringify({ token: cfg.token, action, ...payload })
+  });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || 'API error');
+  return j;
+}
+
+const TX_KEYS = ['uid','date','type','amount','accountId','class1','class2','projectId','memo','invoiceId','photoFileId','createdAt','modifiedAt'];
+const txToRow = t => TX_KEYS.map(k => t[k] ?? '');
+const rowToTx = r => Object.fromEntries(TX_KEYS.map((k, i) => [k, k === 'amount' ? Number(r[i]) : String(r[i] ?? '')]));
+
+async function loadAll() {
+  const { data } = await api('all');
+  D.tx = data.Transactions.map(rowToTx);
+  D.accounts = data.Accounts.map(r => ({ id: String(r[0]), name: r[1] }));
+  D.projects = data.Projects.map(r => ({ id: String(r[0]), name: r[1] }));
+  D.cats = data.Categories.map(r => ({ id: String(r[0]), level: Number(r[1]), parent: String(r[2]), kind: r[3], name: r[4], order: Number(r[6]) }))
+                          .sort((a, b) => a.order - b.order);
+  D.items = data.ReceiptItems;
+  render();
+}
+
+/* ---------- 查表 ---------- */
+const c1 = id => D.cats.find(c => c.level === 1 && c.id === String(id));
+const c2 = id => D.cats.find(c => c.level === 2 && c.id === String(id));
+const accName = id => D.accounts.find(a => a.id === String(id))?.name ?? '';
+const projName = id => D.projects.find(p => p.id === String(id))?.name ?? '';
+const catLabel = t => [c1(t.class1)?.name, c2(t.class2)?.name].filter(Boolean).join(' › ') || '未分類';
+
+/* ---------- 明細 / 統計 ---------- */
+function monthTx() { return D.tx.filter(t => t.date.startsWith(curMonth)).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)); }
+
+function render() {
+  $('#month').value = curMonth;
+  const list = monthTx();
+  const inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  $('#sumInc').textContent = fmt(inc); $('#sumExp').textContent = fmt(exp); $('#sumNet').textContent = fmt(inc - exp);
+
+  let html = '', lastDay = '';
+  for (const t of list) {
+    if (t.date !== lastDay) { html += `<div class="day">${t.date}</div>`; lastDay = t.date; }
+    html += `<div class="tx" data-uid="${esc(t.uid)}"><div class="grow"><div>${esc(catLabel(t))}</div><div class="sub">${esc(t.memo)}${t.projectId ? ' · ' + esc(projName(t.projectId)) : ''}</div></div><b class="${t.type === 'income' ? 'inc' : 'exp'}">${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}</b></div>`;
+  }
+  $('#list').innerHTML = html || '<div class="sub">這個月沒有紀錄</div>';
+
+  // 統計：本月支出分類
+  const byCat = {};
+  list.filter(t => t.type === 'expense').forEach(t => { const k = c1(t.class1)?.name || '未分類'; byCat[k] = (byCat[k] || 0) + t.amount; });
+  const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  const max = entries[0]?.[1] || 1;
+  $('#catStats').innerHTML = entries.map(([k, v]) => `<div style="margin-bottom:8px"><div class="row"><span class="grow">${esc(k)}</span><b>${fmt(v)}</b></div><div class="bar" style="width:${v / max * 100}%"></div></div>`).join('') || '<div class="sub">沒有資料</div>';
+
+  const byProj = {};
+  D.tx.filter(t => t.projectId && t.type === 'expense').forEach(t => byProj[t.projectId] = (byProj[t.projectId] || 0) + t.amount);
+  $('#projStats').innerHTML = Object.entries(byProj).sort((a, b) => b[1] - a[1]).map(([id, v]) => `<tr><td>${esc(projName(id))}</td><td>${fmt(v)}</td></tr>`).join('') || '<tr><td class="sub">沒有專案資料</td></tr>';
+}
+
+/* ---------- 新增 / 編輯 ---------- */
+function fillSelect(sel, opts, blank) { sel.innerHTML = (blank ? `<option value="">${blank}</option>` : '') + opts.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join(''); }
+function refreshC1() { fillSelect($('#fC1'), D.cats.filter(c => c.level === 1 && c.kind === $('#fType').value)); refreshC2(); }
+function refreshC2() { fillSelect($('#fC2'), D.cats.filter(c => c.level === 2 && c.parent === $('#fC1').value), '（無子分類）'); }
+
+function openForm(t) {
+  editing = t || null;
+  $('#formTitle').textContent = t ? '編輯' : '新增';
+  fillSelect($('#fAcc'), D.accounts);
+  fillSelect($('#fProj'), D.projects, '（無專案）');
+  $('#fType').value = t?.type || 'expense';
+  refreshC1();
+  $('#fDate').value = t?.date || new Date().toISOString().slice(0, 10);
+  $('#fAmount').value = t?.amount ?? '';
+  if (t) { $('#fC1').value = t.class1; refreshC2(); $('#fC2').value = t.class2; $('#fAcc').value = t.accountId; $('#fProj').value = t.projectId; }
+  $('#fMemo').value = t?.memo || '';
+  $('#formDlg').showModal();
+}
+
+async function saveForm() {
+  const amount = Number($('#fAmount').value);
+  if (!amount || amount <= 0) return alert('請輸入金額');
+  const now = new Date().toISOString();
+  const t = {
+    uid: editing?.uid || 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    date: $('#fDate').value, type: $('#fType').value, amount,
+    accountId: $('#fAcc').value, class1: $('#fC1').value, class2: $('#fC2').value, projectId: $('#fProj').value,
+    memo: $('#fMemo').value, invoiceId: editing?.invoiceId || '', photoFileId: editing?.photoFileId || '',
+    createdAt: editing?.createdAt || now, modifiedAt: now
+  };
+  $('#fSave').disabled = true;
+  try {
+    await api('upsertTx', { row: txToRow(t) });
+    const i = D.tx.findIndex(x => x.uid === t.uid);
+    if (i >= 0) D.tx[i] = t; else D.tx.push(t);
+    curMonth = t.date.slice(0, 7);
+    $('#formDlg').close(); render();
+  } catch (e) { alert('儲存失敗：' + e.message); }
+  $('#fSave').disabled = false;
+}
+
+/* ---------- 詳情 ---------- */
+async function openDetail(uid) {
+  const t = D.tx.find(x => x.uid === uid); if (!t) return;
+  viewing = t;
+  const items = t.invoiceId ? D.items.filter(r => String(r[0]) === t.invoiceId) : [];
+  $('#detailBody').innerHTML = `
+    <h2>${esc(catLabel(t))}</h2>
+    <div class="${t.type === 'income' ? 'inc' : 'exp'}" style="font-size:22px;font-weight:600">${t.type === 'income' ? '+' : '-'}${fmt(t.amount)}</div>
+    <p class="sub">${t.date} · ${esc(accName(t.accountId))}${t.projectId ? ' · ' + esc(projName(t.projectId)) : ''}</p>
+    <p>${esc(t.memo)}</p>
+    ${items.length ? `<h2>電子發票明細（${esc(t.invoiceId)}）</h2><table>${items.map(r => `<tr><td>${esc(r[4])} ×${r[6]}</td><td>${fmt(r[5])}</td></tr>`).join('')}</table>` : ''}
+    ${t.photoFileId ? '<p><button class="ghost" id="loadPhoto">載入照片</button></p><div id="photoBox"></div>' : ''}`;
+  $('#loadPhoto')?.addEventListener('click', async e => {
+    e.target.disabled = true;
+    try { const { base64 } = await api('getPhoto', { fileId: t.photoFileId }); $('#photoBox').innerHTML = `<img style="max-width:100%;border-radius:8px" src="data:image/jpeg;base64,${base64}">`; }
+    catch (err) { alert(err.message); }
+  });
+  $('#detailDlg').showModal();
+}
+
+/* ---------- 匯入 ---------- */
+const decDate = n => { n = +n; return `${1900 + Math.floor(n / 10000)}-${String(Math.floor(n / 100) % 100).padStart(2, '0')}-${String(n % 100).padStart(2, '0')}`; };
+const isoTs = s => s > 0 ? new Date(s * 1000).toISOString() : '';
+const log = m => { $('#importLog').textContent = m; };
+
+async function parseBackup(file) {
+  log('解壓縮中…');
+  const zip = await JSZip.loadAsync(file);
+  const dbFile = zip.file('db/fin.db');
+  if (!dbFile) throw new Error('找不到 db/fin.db，這可能不是 CostDiary 備份檔');
+  const SQL = await initSqlJs({ locateFile: f => SQLJS_BASE + f });
+  const db = new SQL.Database(await dbFile.async('uint8array'));
+  const q = sql => { const r = db.exec(sql); return r.length ? r[0].values : []; };
+
+  const accounts = q('SELECT tid,name,currencytype,money,weeklybudget,monthlybudget,type,color FROM accounts WHERE deleted=0')
+    .map(r => [String(r[0]), r[1], r[2], r[3], r[4], r[5], String(r[6]), r[7]]);
+  const projects = q('SELECT tid,name,memo,color,priority FROM projects').map(r => [String(r[0]), r[1], r[2], r[3], r[4]]);
+  const kindOf = {};
+  const cats = q('SELECT tid,type,name,imagename,sorder FROM finclass1').map(r => {
+    kindOf[r[0]] = r[1] == 0 ? 'income' : 'expense';
+    return [String(r[0]), 1, '', kindOf[r[0]], r[2], r[3], r[4]];
+  }).concat(q('SELECT tid,parent,name,imagename,sorder FROM finclass2').map(r => [String(r[0]), 2, String(r[1]), kindOf[r[1]] || 'expense', r[2], r[3], r[4]]));
+
+  const main = q('SELECT uid,sdate,stype,money,class1,class2,account,project,memo,hasphoto,photo,modtime,invoiceid,createtime FROM main WHERE deleted=0');
+  const photos = [], invoiceIds = new Set();
+  const tx = main.map((r, idx) => {
+    const [uid, sdate, stype, money, cl1, cl2, acc, proj, memo, hasPhoto, photo, modtime, inv, createtime] = r;
+    if (inv) invoiceIds.add(inv);
+    if (hasPhoto == 1 && photo) photos.push({ idx, path: `acc/${acc}/images/${photo}.jpg`, name: `${photo}.jpg` });
+    const date = decDate(sdate);
+    return [uid, date, stype == 0 ? 'income' : 'expense', Math.abs(money), String(acc), String(cl1), String(cl2),
+            proj ? String(proj) : '', memo || '', inv || '', '', createtime > 0 ? isoTs(createtime) : date + 'T12:00:00.000Z', isoTs(modtime)];
+  });
+
+  const items = []; let missing = 0;
+  for (const id of invoiceIds) {
+    const f = zip.file(`invoice/receipt/${id}.raw`);
+    if (!f) { missing++; continue; }
+    try {
+      const j = JSON.parse(await f.async('string'));
+      (j.shopping_list || []).forEach(it => items.push([id, j.seller_id || '', decDate(j.date), j.amount, it.name, it.price, it.count]));
+    } catch { missing++; }
+  }
+  return { zip, accounts, projects, cats, tx, items, photos, missing, invoiceCount: invoiceIds.size };
+}
+
+$('#file').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  $('#upload').disabled = true;
+  try {
+    parsed = await parseBackup(f);
+    const dates = parsed.tx.map(r => r[1]).sort();
+    log(`解析完成\n交易：${parsed.tx.length} 筆（${dates[0]} ~ ${dates.at(-1)}）\n帳戶：${parsed.accounts.length}　專案：${parsed.projects.length}　分類：${parsed.cats.length}\n電子發票：${parsed.invoiceCount} 張（找不到明細檔 ${parsed.missing} 張）→ 品項 ${parsed.items.length} 列\n照片：${parsed.photos.length} 張`);
+    $('#upload').disabled = false;
+  } catch (err) { log('解析失敗：' + err.message); }
+});
+
+async function pushRows(sheet, rows, label) {
+  for (let i = 0; i < rows.length; i += 500) {
+    log(`${label}… ${Math.min(i + 500, rows.length)}/${rows.length}`);
+    await api('append', { sheet, rows: rows.slice(i, i + 500) });
+  }
+}
+
+$('#upload').addEventListener('click', async () => {
+  if (!parsed) return;
+  $('#upload').disabled = true;
+  try {
+    await api('ping');
+    if ($('#wipe').checked) for (const s of ['Transactions', 'Accounts', 'Projects', 'Categories', 'ReceiptItems']) await api('clear', { sheet: s });
+    for (const p of parsed.photos) {
+      log(`上傳照片 ${p.name}…`);
+      const f = parsed.zip.file(p.path);
+      if (f) parsed.tx[p.idx][10] = (await api('uploadPhoto', { name: p.name, base64: await f.async('base64') })).fileId;
+    }
+    await pushRows('Accounts', parsed.accounts, '帳戶');
+    await pushRows('Projects', parsed.projects, '專案');
+    await pushRows('Categories', parsed.cats, '分類');
+    await pushRows('ReceiptItems', parsed.items, '發票明細');
+    await pushRows('Transactions', parsed.tx, '交易');
+    log('匯入完成，重新載入資料…');
+    await loadAll();
+    log('✅ 匯入完成！到「明細」查看。');
+  } catch (err) { log('上傳失敗：' + err.message + '\n（可修正後再按一次，勾選「先清空」可避免重複）'); }
+  $('#upload').disabled = false;
+});
+
+/* ---------- 事件 / 啟動 ---------- */
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('main > section').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + b.dataset.tab));
+  $('#fab').classList.toggle('hidden', b.dataset.tab !== 'list');
+}));
+const shiftMonth = d => { const [y, m] = curMonth.split('-').map(Number); const dt = new Date(y, m - 1 + d, 1); curMonth = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`; render(); };
+$('#prev').onclick = () => shiftMonth(-1); $('#next').onclick = () => shiftMonth(1);
+$('#month').onchange = e => { if (e.target.value) { curMonth = e.target.value; render(); } };
+$('#list').addEventListener('click', e => { const el = e.target.closest('.tx'); if (el) openDetail(el.dataset.uid); });
+$('#fab').onclick = () => openForm();
+$('#fType').onchange = refreshC1; $('#fC1').onchange = refreshC2;
+$('#fCancel').onclick = () => $('#formDlg').close(); $('#fSave').onclick = saveForm;
+$('#dClose').onclick = () => $('#detailDlg').close();
+$('#dEdit').onclick = () => { $('#detailDlg').close(); openForm(viewing); };
+$('#dDelete').onclick = async () => {
+  if (!confirm('確定刪除這筆紀錄？')) return;
+  try { await api('deleteTx', { uid: viewing.uid }); D.tx = D.tx.filter(t => t.uid !== viewing.uid); $('#detailDlg').close(); render(); }
+  catch (e) { alert(e.message); }
+};
+$('#saveCfg').onclick = async () => {
+  cfg.url = $('#cfgUrl').value.trim(); cfg.token = $('#cfgToken').value;
+  localStorage.setItem('apiUrl', cfg.url); localStorage.setItem('apiToken', cfg.token);
+  $('#cfgMsg').textContent = '連線中…';
+  try { await loadAll(); $('#cfgMsg').textContent = `✅ 已連線，載入 ${D.tx.length} 筆交易`; }
+  catch (e) { $('#cfgMsg').textContent = '❌ ' + e.message; }
+};
+
+$('#cfgUrl').value = cfg.url; $('#cfgToken').value = cfg.token;
+render();
+if (cfg.url) loadAll().catch(e => { $('#cfgMsg').textContent = '❌ ' + e.message; });
+</script>
+</body>
+</html>
