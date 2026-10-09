@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="記帳">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#2563eb">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
 <title>記帳</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--text:#1c1e21;--sub:#6b7280;--line:#e5e7eb;--accent:#2563eb;--inc:#16a34a;--exp:#dc2626}
@@ -88,7 +93,9 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
       <input id="cfgToken" type="password">
       <button class="btn" id="saveCfg">儲存並連線</button>
       <p class="sub" id="cfgMsg"></p>
-    </div>  
+    </div>
+    <div class="card"><h2>版本資訊</h2><table id="verTable"></table><p class="sub" id="verMsg"></p>
+      <p class="sub" style="margin:0">版本號 = 檔案產生時間（YYYYMMDD-HHMM，台北時間）</p></div>  
     <div class="card">
       <h2>匯入 CostDiary 備份 (.cddb)</h2>
       <p class="sub">檔案只會在你的瀏覽器中解析，再傳到你自己的 Google Sheet / Drive。</p>
@@ -98,6 +105,7 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
       <p><button class="btn" id="upload" disabled>上傳到 Google Sheet</button></p>
     </div>
   </section>
+<div id="foot" class="sub" style="text-align:center;margin:4px 0 12px"></div>
 </main>
 
 <nav>
@@ -137,6 +145,9 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 <script>
+// 版本號 = 檔案產生時間 (YYYYMMDD-HHMM, 台北時間)，與 Code.gs 的 BACKEND_VERSION 對照
+const APP_VERSION = '20261009-1149';
+const REQUIRES_BACKEND = '20261009-1149';   // 此版前端至少需要這個版本以上的後端
 const SQLJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -152,14 +163,66 @@ let editing = null, viewing = null, parsed = null;
 /* ---------- API ---------- */
 async function api(action, payload = {}) {
   if (!cfg.url) throw new Error('請先到「設定」填入網址');
-  const res = await fetch(cfg.url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 避免 CORS preflight
-    body: JSON.stringify({ token: cfg.token, action, ...payload })
-  });
+  let res;
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 30000);
+  try {
+    res = await fetch(cfg.url, {
+      method: 'POST', signal: ctl.signal,
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 避免 CORS preflight
+      body: JSON.stringify({ token: cfg.token, action, ...payload })
+    });
+  } catch (e) {
+    const err = new Error('網路無法連線'); err.network = true; throw err;
+  } finally { clearTimeout(timer); }
   const j = await res.json();
+  if (j.version) { localStorage.setItem('backendVersion', j.version); renderVersion(); }
   if (!j.ok) throw new Error(j.error || 'API error');
   return j;
+}
+
+/* ---------- 離線佇列：連不上網時先存本機，連線後自動補傳 ---------- */
+let queue = [], flushing = false;
+const saveQueue = () => cacheSet('queue', queue);
+const pendingText = () => queue.length ? `待同步 ${queue.length} 筆（連線後自動上傳）` : '';
+async function sendOrQueue(op) {                 // op: {action:'upsertTx', row} | {action:'deleteTx', uid}
+  if (!queue.length) {
+    try { await api(op.action, op); return 'sent'; }
+    catch (e) { if (!e.network) throw e; }
+  }
+  queue.push(op); await saveQueue(); setStatus(pendingText());
+  flushQueue();
+  return 'queued';
+}
+async function flushQueue() {
+  if (flushing || !queue.length) return;
+  flushing = true;
+  try {
+    while (queue.length) {
+      try { await api(queue[0].action, queue[0]); queue.shift(); await saveQueue(); }
+      catch (e) { setStatus(e.network ? pendingText() : '同步失敗：' + e.message); break; }
+    }
+    if (!queue.length) setStatus('已同步 ' + hhmm(Date.now()));
+  } finally { flushing = false; }
+}
+function applyQueue() {                          // 把尚未上傳的變更重新套回剛下載的資料
+  queue.forEach(op => {
+    if (op.action === 'upsertTx') { const t = rowToTx(op.row), i = D.tx.findIndex(x => x.uid === t.uid); if (i >= 0) D.tx[i] = t; else D.tx.push(t); }
+    else if (op.action === 'deleteTx') D.tx = D.tx.filter(x => x.uid !== op.uid);
+  });
+}
+
+/* ---------- 版本資訊 ---------- */
+function renderVersion() {
+  const be = localStorage.getItem('backendVersion') || '';
+  const el = $('#verTable'); if (!el) return;
+  el.innerHTML = `<tr><td>前端 (index.html)</td><td>${esc(APP_VERSION)}</td></tr>
+    <tr><td>後端 (Code.gs)</td><td>${esc(be || '尚未連線')}</td></tr>
+    <tr><td>前端需要的後端 ≥</td><td>${esc(REQUIRES_BACKEND)}</td></tr>`;
+  let msg = '';
+  if (be) msg = be < REQUIRES_BACKEND ? '⚠️ 後端版本較舊：請把最新的 Code.gs 貼進 Apps Script，並「管理部署作業 → 新版本」重新部署'
+              : be === APP_VERSION ? '✅ 前後端版本一致' : '✅ 後端版本相容';
+  $('#verMsg').textContent = msg;
+  $('#foot').textContent = `前端 v${APP_VERSION} · 後端 ${be ? 'v' + be : '—'}`;
 }
 
 const TX_KEYS = ['uid','date','type','amount','accountId','class1','class2','projectId','memo','invoiceId','photoFileId','createdAt','modifiedAt'];
@@ -177,6 +240,7 @@ const hhmm = ms => new Date(ms).toLocaleTimeString('zh-TW', { hour: '2-digit', m
 async function loadAll() {
   setStatus('同步中…');
   try {
+    await flushQueue();
     const { data } = await api('all');
     D.tx = data.Transactions.map(rowToTx);
     D.accounts = data.Accounts.map(r => ({ id: String(r[0]), name: r[1] }));
@@ -185,10 +249,11 @@ async function loadAll() {
                             .sort((a, b) => a.order - b.order);
     D.items = data.ReceiptItems;
     D.settings = Object.fromEntries((data.Settings || []).map(r => [String(r[0]), r[1]]));
-    saveCache(); setStatus('已同步 ' + hhmm(Date.now()));
+    applyQueue();
+    saveCache(); setStatus(queue.length ? pendingText() : '已同步 ' + hhmm(Date.now()));
     render();
   } catch (e) {
-    setStatus(D.tx.length ? '離線中，顯示上次同步的資料' : '連線失敗');
+    setStatus(queue.length ? pendingText() : D.tx.length ? '離線中，顯示上次同步的資料' : '連線失敗');
     throw e;
   }
 }
@@ -348,7 +413,7 @@ async function saveForm() {
   };
   $('#fSave').disabled = true;
   try {
-    await api('upsertTx', { row: txToRow(t) });
+    await sendOrQueue({ action: 'upsertTx', row: txToRow(t) });
     const i = D.tx.findIndex(x => x.uid === t.uid);
     if (i >= 0) D.tx[i] = t; else D.tx.push(t);
     localStorage.setItem('lastAcc', t.accountId);
@@ -528,7 +593,7 @@ $('#dClose').onclick = () => $('#detailDlg').close();
 $('#dEdit').onclick = () => { $('#detailDlg').close(); openForm(viewing); };
 $('#dDelete').onclick = async () => {
   if (!confirm('確定刪除這筆紀錄？')) return;
-  try { await api('deleteTx', { uid: viewing.uid }); D.tx = D.tx.filter(t => t.uid !== viewing.uid); saveCache(); $('#detailDlg').close(); render(); }
+  try { await sendOrQueue({ action: 'deleteTx', uid: viewing.uid }); D.tx = D.tx.filter(t => t.uid !== viewing.uid); saveCache(); $('#detailDlg').close(); render(); }
   catch (e) { alert(e.message); }
 };
 $('#saveCfg').onclick = async () => {
@@ -542,8 +607,12 @@ $('#saveCfg').onclick = async () => {
 $('#cfgUrl').value = cfg.url; $('#cfgToken').value = cfg.token;
 (async () => {
   const c = await cacheGet('data');
+  const q0 = await cacheGet('queue'); if (q0 && !queue.length) queue = q0;
   if (c?.D) { D = c.D; D.settings ||= {}; render(); setStatus('顯示上次資料（' + hhmm(c.at) + '），同步中…'); }
   else render();
+  renderVersion();
+  if (queue.length) setStatus(pendingText());
+  window.addEventListener('online', () => { if (cfg.url) loadAll().catch(() => {}); });
   if (cfg.url) loadAll().catch(e => { $('#cfgMsg').textContent = '❌ ' + e.message; });
 })();
 </script>
