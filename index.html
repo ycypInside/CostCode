@@ -146,8 +146,8 @@ table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px sol
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 <script>
 // 版本號 = 檔案產生時間 (YYYYMMDD-HHMM, 台北時間)，與 Code.gs 的 BACKEND_VERSION 對照
-const APP_VERSION = '20261009-1149';
-const REQUIRES_BACKEND = '20261009-1149';   // 此版前端至少需要這個版本以上的後端
+const APP_VERSION = '20261009-1204';
+const REQUIRES_BACKEND = '20261009-1204';   // 此版前端至少需要這個版本以上的後端
 const SQLJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -175,7 +175,7 @@ async function api(action, payload = {}) {
     const err = new Error('網路無法連線'); err.network = true; throw err;
   } finally { clearTimeout(timer); }
   const j = await res.json();
-  if (j.version) { localStorage.setItem('backendVersion', j.version); renderVersion(); }
+  if (j.ok) { localStorage.setItem('backendVersion', j.version || 'OLD'); renderVersion(); }   // 舊版後端不會回報 version
   if (!j.ok) throw new Error(j.error || 'API error');
   return j;
 }
@@ -213,16 +213,17 @@ function applyQueue() {                          // 把尚未上傳的變更重�
 
 /* ---------- 版本資訊 ---------- */
 function renderVersion() {
-  const be = localStorage.getItem('backendVersion') || '';
+  const raw = localStorage.getItem('backendVersion') || '';
+  const isOld = raw === 'OLD', be = isOld ? '舊版（未回報版本）' : raw;
   const el = $('#verTable'); if (!el) return;
   el.innerHTML = `<tr><td>前端 (index.html)</td><td>${esc(APP_VERSION)}</td></tr>
     <tr><td>後端 (Code.gs)</td><td>${esc(be || '尚未連線')}</td></tr>
     <tr><td>前端需要的後端 ≥</td><td>${esc(REQUIRES_BACKEND)}</td></tr>`;
   let msg = '';
-  if (be) msg = be < REQUIRES_BACKEND ? '⚠️ 後端版本較舊：請把最新的 Code.gs 貼進 Apps Script，並「管理部署作業 → 新版本」重新部署'
-              : be === APP_VERSION ? '✅ 前後端版本一致' : '✅ 後端版本相容';
+  if (isOld || (raw && raw < REQUIRES_BACKEND)) msg = '⚠️ 後端不是最新版：請把最新的 Code.gs 貼進 Apps Script，存檔後到「部署 → 管理部署作業 → 編輯 → 新版本 → 部署」（要用原本的部署，網址才不會變）';
+  else if (raw) msg = raw === APP_VERSION ? '✅ 前後端版本一致' : '✅ 後端版本相容';
   $('#verMsg').textContent = msg;
-  $('#foot').textContent = `前端 v${APP_VERSION} · 後端 ${be ? 'v' + be : '—'}`;
+  $('#foot').textContent = `前端 v${APP_VERSION} · 後端 ${raw ? (isOld ? '舊版' : 'v' + raw) : '—'}`;
 }
 
 const TX_KEYS = ['uid','date','type','amount','accountId','class1','class2','projectId','memo','invoiceId','photoFileId','createdAt','modifiedAt'];
