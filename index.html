@@ -54,6 +54,7 @@
   }
   #app { width: min(480px, 100%); min-height: 100dvh; margin: 0 auto; background: var(--bg); position: relative; }
   #topbar {
+    position: sticky; top: 0; z-index: 15;
     background: var(--blue);
     color: white;
     padding: calc(12px + env(safe-area-inset-top)) 16px 14px;
@@ -113,7 +114,13 @@
   .card { padding: 16px; margin: 0 0 12px; }
   .card h2, .sheet-top h2 { margin: 0; font-size: 18px; }
   .card p { margin: 0 0 8px; }
-  .dayh { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 13px; padding: 14px 2px 4px; }
+  .dayh {
+    display: flex; justify-content: space-between; gap: 8px;
+    color: var(--muted); font-size: 13px; font-weight: 700;
+    padding: 14px 14px 4px; margin: 0 -12px;
+    position: sticky; top: calc(58px + env(safe-area-inset-top));
+    background: var(--card); z-index: 2;
+  }
   .tx {
     width: 100%;
     display: grid;
@@ -164,16 +171,28 @@
     font-size: 12px;
   }
   .chip[aria-pressed="true"], .cat[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); }
-  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0 14px; }
-  .pad button { height: 52px; border: 0; border-radius: 14px; background: var(--card); font-size: 22px; font-variant-numeric: tabular-nums; }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 10px; }
+  .pad button { height: 46px; border: 0; border-radius: 14px; background: var(--card); font-size: 22px; font-variant-numeric: tabular-nums; }
   .pad button:active { background: var(--blue-soft); }
-  .savebar { position: sticky; bottom: 0; padding: 12px 0 4px; background: linear-gradient(transparent, var(--bg) 28%); }
+  .savebar {
+    flex: none;
+    padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+  }
+  .savebar .primary, .savebar .danger { margin-top: 0; }
+  .savebar .danger { margin-top: 4px; }
+  .sheet-body input, .sheet-body select, .sheet-body textarea, .sheet-body .chip, .sheet-body .cat { scroll-margin-bottom: 92px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+  .picked { margin: 0 0 8px; font-weight: 700; min-height: 24px; }
+  .more { margin: 4px 0 8px; }
+  .more summary { cursor: pointer; color: var(--blue-ink); font-weight: 700; min-height: 44px; display: flex; align-items: center; }
   .chart { width: 100%; height: auto; display: block; }
   .legend { display: flex; gap: 16px; color: var(--muted); font-size: 13px; }
   .dot::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 6px; }
   .dot.expense::before { background: var(--expense); }
   .dot.income::before { background: var(--income); }
-  .track, .budget-track { height: 8px; background: #efe8de; border-radius: 99px; overflow: hidden; }
+  .track, .budget-track { height: 10px; background: #efe8de; border-radius: 99px; overflow: hidden; }
   .track { margin-top: 4px; }
   .track > span, .budget-track > span { display: block; height: 100%; background: var(--blue); border-radius: 99px; }
   .bar-row { margin: 0 0 10px; }
@@ -226,9 +245,10 @@
   .ghost { border: 0; background: transparent; color: var(--blue); font-weight: 700; min-height: 44px; padding: 0 10px; }
   .sheet-body { flex: 1; overflow: auto; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); }
   #toast {
-    position: fixed; z-index: 40; left: 50%; transform: translateX(-50%);
-    bottom: calc(var(--nav-h) + 76px);
-    max-width: min(420px, calc(100% - 32px));
+    position: fixed; z-index: 40;
+    left: max(16px, calc(50vw - 240px + 16px));
+    bottom: calc(var(--nav-h) + 18px);
+    max-width: min(250px, calc(100% - 108px));
     background: var(--ink); color: white; border-radius: 999px; padding: 12px 16px;
     pointer-events: none;
   }
@@ -257,7 +277,7 @@
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
 <script>
-const APP_VERSION = "20261009-2034";
+const APP_VERSION = "20261012-0232";
 const REQUIRES_BACKEND = "20261009-1415";
 
 /*__PURE_START__*/
@@ -982,6 +1002,7 @@ const state = {
   form: null,
   booting: true,
   statsKind: "expense",
+  ledgerKind: "",
   budgetDraft: null,
 };
 const importUi = { phase: "idle", message: "", error: "", summary: null, resume: false, fileName: "" };
@@ -1202,6 +1223,13 @@ function renderLedgerShell() {
       autocomplete: "off", enterkeyhint: "search", "aria-label": "搜尋",
       onInput: (event) => { state.query = event.target.value; paintLedger(); },
     })),
+    el("div", { class: "chips", id: "kind-filter" }, ["", "expense", "income"].map((kind) => {
+      const label = kind === "expense" ? "支出" : (kind === "income" ? "收入" : "全部");
+      return el("button", {
+        type: "button", class: "chip", "aria-pressed": state.ledgerKind === kind ? "true" : "false",
+        onClick: () => { state.ledgerKind = kind; render(); },
+      }, label);
+    })),
     el("div", { id: "summary" }),
     el("div", { id: "list", class: "list-card" }));
 }
@@ -1209,8 +1237,18 @@ function renderLedgerShell() {
 function visibleTransactions() {
   const query = state.query.trim();
   if (query) return searchLimited(state.data, query, 300);
-  const rows = state.data.transactions.filter((tx) => String(tx.date || "").slice(0, 7) === state.month);
+  let rows = state.data.transactions.filter((tx) => String(tx.date || "").slice(0, 7) === state.month);
+  if (state.ledgerKind === "expense" || state.ledgerKind === "income") rows = rows.filter((tx) => tx.type === state.ledgerKind);
   return { rows: rows, total: rows.length, truncated: false };
+}
+
+function dayHeading(date) {
+  const today = localISODate(new Date());
+  const yesterday = localISODate(addDays(new Date(), -1));
+  const label = formatDayLabel(date) + " " + weekday(date);
+  if (date === today) return "今天 · " + label;
+  if (date === yesterday) return "昨天 · " + label;
+  return label;
 }
 
 function paintLedger() {
@@ -1242,6 +1280,7 @@ function renderTxList() {
   const view = visibleTransactions();
   if (!view.rows.length) {
     if (state.query.trim()) return [el("div", { class: "empty" }, el("p", {}, "沒有符合的帳"), el("p", { class: "muted" }, "試試分類、備註、金額或發票品項，多個詞要同時符合。"))];
+    if (state.ledgerKind) return [el("div", { class: "empty" }, el("p", {}, "這個月份沒有" + (state.ledgerKind === "income" ? "收入" : "支出")))];
     return [el("div", { class: "empty" },
       el("p", {}, monthTitle(state.month) + "還沒有記帳"),
       el("p", { class: "muted" }, "用餐、交通，一筆就好。"),
@@ -1253,7 +1292,7 @@ function renderTxList() {
     const sumText = group.income && group.expense
       ? "支出 " + formatMoney(group.expense) + " · 收入 " + formatMoney(group.income)
       : (group.income ? "收入 " + formatMoney(group.income) : formatMoney(group.expense));
-    nodes.push(el("div", { class: "dayh" }, el("span", {}, formatDayLabel(group.date) + " " + weekday(group.date)), el("span", {}, sumText)));
+    nodes.push(el("div", { class: "dayh" }, el("span", {}, dayHeading(group.date)), el("span", {}, sumText)));
     group.items.forEach((tx) => nodes.push(renderTxButton(tx)));
   });
   return nodes;
@@ -1274,7 +1313,7 @@ function renderStats() {
   const spent = sumMonth(state.data.transactions, key, "expense");
   const saved = Number(state.data.settings.monthlyBudget) || 0;
   const status = budgetStatus(spent, saved, today);
-  const width = saved > 0 ? Math.min(100, Math.round(status.ratio * 100)) : 0;
+  const width = saved > 0 ? Math.min(100, Math.max(status.ratio > 0 ? 4 : 0, Math.round(status.ratio * 100))) : 0;
   let hint = "設定每月預算後，這裡會顯示這個月還能花多少。";
   if (saved > 0 && status.over) hint = "已經超出預算 " + formatMoney(spent - saved) + " 元";
   else if (saved > 0) hint = "剩下 " + formatMoney(status.remaining) + " 元 · 含今天還有 " + status.daysLeft + " 天，一天約 " + formatMoney(status.perDay) + " 元";
@@ -1283,11 +1322,12 @@ function renderStats() {
   return el("div", {},
     el("section", { class: "card" },
       el("h2", {}, monthTitle(key) + "預算"),
+      saved > 0 ? el("p", { class: "hero-num" + (status.over ? " expense" : "") }, formatMoney(status.over ? spent - saved : status.remaining), el("span", { class: "unit" }, status.over ? "超出" : "還能花")) : null,
+      saved > 0 ? el("div", { class: "budget-track" + (status.over ? " over" : ""), style: "margin:12px 0" }, el("span", { style: "width:" + width + "%" })) : null,
+      el("p", { class: "muted" }, hint),
       el("label", { for: "budget-input" }, "每月預算（元）"),
       el("input", { id: "budget-input", inputmode: "decimal", "aria-label": "每月預算", value: state.budgetDraft != null ? state.budgetDraft : (state.data.settings.monthlyBudget || ""), onInput: (event) => { state.budgetDraft = event.target.value; } }),
-      el("button", { type: "button", class: "primary", id: "save-budget", onClick: go(saveBudget) }, "儲存預算"),
-      saved > 0 ? el("div", { class: "budget-track" + (status.over ? " over" : ""), style: "margin-top:12px" }, el("span", { style: "width:" + width + "%" })) : null,
-      el("p", { class: "muted" }, hint)),
+      el("button", { type: "button", class: "primary", id: "save-budget", onClick: go(saveBudget) }, "儲存預算")),
     el("section", { class: "card" },
       el("h2", {}, "近 12 個月"),
       el("p", { class: "legend" }, el("span", { class: "dot expense" }, "支出"), el("span", { class: "dot income" }, "收入")),
@@ -1312,6 +1352,7 @@ function renderChart(keys) {
   const svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: "chart", role: "group", "aria-label": "近 12 個月收支" });
   keys.forEach((key, index) => {
     const x = index * slot;
+    if (key === current) svg.append(svgEl("rect", { x: x + 1, y: 8, width: Math.max(slot - 2, 1), height: 124, rx: 6, fill: "#e7eeff" }));
     const expenseH = expenses[index] ? Math.max(2, Math.round(expenses[index] / max * 112)) : 0;
     const incomeH = incomes[index] ? Math.max(2, Math.round(incomes[index] / max * 112)) : 0;
     const base = 132;
@@ -1349,7 +1390,7 @@ function renderProjects() {
     return el("button", { type: "button", class: "project", onClick: () => openProject(project.id) },
       el("b", {}, project.name),
       el("span", {}, formatMoney(stats.total) + " 元"),
-      el("span", { class: "muted" }, period + " · " + stats.count + " 筆"));
+      el("span", { class: "muted" }, period + " · " + stats.count + " 筆" + (stats.bookedDays ? " · 每記帳日 " + formatMoney(stats.avg) + " 元" : "")));
   }));
 }
 
@@ -1701,17 +1742,26 @@ async function uploadPrevious(data) {
   await refreshCloud();
 }
 
+function lastCategory(kind) {
+  const main = categoryByLevel(state.data, localStorage.getItem("lastClass1") || "", "1");
+  const sub = categoryByLevel(state.data, localStorage.getItem("lastClass2") || "", "2");
+  if (!main || main.kind !== kind) return { class1: "", class2: "" };
+  if (sub && String(sub.parentId) === String(main.id)) return { class1: String(main.id), class2: String(sub.id) };
+  return { class1: String(main.id), class2: "" };
+}
+
 function openForm(tx) {
   const accounts = state.data.accounts;
   const last = localStorage.getItem("lastAccountId") || "";
   const fallback = accounts.some((account) => String(account.id) === last) ? last : (accounts[0] ? accounts[0].id : "");
+  const remembered = tx ? null : lastCategory(tx ? tx.type : "expense");
   state.form = {
     editing: !!tx,
     uid: tx ? tx.uid : "",
     type: tx ? tx.type : "expense",
     amountStr: tx ? amountToStr(tx.amount) : "",
-    class1: tx ? tx.class1 || "" : "",
-    class2: tx ? tx.class2 || "" : "",
+    class1: tx ? tx.class1 || "" : remembered.class1,
+    class2: tx ? tx.class2 || "" : remembered.class2,
     accountId: tx ? tx.accountId || "" : fallback,
     projectId: tx && tx.projectId ? tx.projectId : "",
     date: tx && tx.date ? tx.date : localISODate(new Date()),
@@ -1764,16 +1814,25 @@ function renderSheet() {
   else if (state.overlay.type === "project") sheet.append(renderProjectSheet(state.overlay.id));
 }
 
-function sheetFrame(title, body) {
+function sheetFrame(title, body, footer) {
   return el("div", { class: "sheet-wrap" },
     el("div", { class: "sheet-top" },
       el("button", { type: "button", class: "ghost", id: "close-sheet", onClick: closeSheet }, "關閉"),
       el("h2", {}, title)),
-    el("div", { class: "sheet-body" }, body));
+    el("div", { class: "sheet-body" }, body),
+    footer || null);
+}
+
+function dateRead(value) {
+  if (!value) return "選一天";
+  return formatDayLabel(value) + " " + weekday(value);
 }
 
 function renderForm() {
   const form = state.form;
+  const showMore = !!(form.editing || form.memo || form.projectId || form.photoFileId || form.photoData);
+  const moreAttrs = { class: "more" };
+  if (showMore) moreAttrs.open = true;
   const body = el("div", {},
     el("div", { class: "segment", id: "type-switch" },
       el("button", { type: "button", id: "type-expense", onClick: () => setType("expense") }, "支出"),
@@ -1783,26 +1842,37 @@ function renderForm() {
       el("button", { type: "button", onClick: () => { pushDigit(key); paintAmount(); paintFormError(""); } }, key))),
     el("p", { class: "eyebrow" }, "常用"),
     el("div", { id: "frequent", class: "chips" }),
+    el("p", { id: "picked", class: "picked" }, "先選分類"),
     el("div", { id: "cat-grid", class: "grid4" }),
     el("div", { id: "subs", class: "chips" }),
-    el("label", { for: "date-input" }, "日期"),
-    el("input", { id: "date-input", type: "date", value: form.date, onChange: (event) => { state.form.date = event.target.value; } }),
-    el("label", { for: "account-input" }, "帳戶"),
-    accountSelect(),
-    el("label", { for: "project-input" }, "專案"),
-    projectSelect(),
-    el("label", { for: "memo-input" }, "備註"),
-    el("textarea", { id: "memo-input", rows: "2", maxlength: "200", onInput: (event) => { state.form.memo = event.target.value; } }, form.memo || ""),
-    el("label", { class: "file" },
-      el("input", { id: "photo-input", type: "file", accept: "image/*", onChange: onPhoto }),
-      "附上照片"),
-    el("p", { id: "photo-note", class: "muted" }, form.photoFileId ? "這筆已經有照片，再選一張會換掉。" : ""),
-    el("div", { id: "photo-preview" }),
+    el("div", { class: "split" },
+      el("div", {},
+        el("label", { for: "date-input" }, "日期"),
+        el("input", { id: "date-input", type: "date", value: form.date, onChange: (event) => {
+          state.form.date = event.target.value;
+          const read = document.getElementById("date-read");
+          if (read) read.textContent = dateRead(event.target.value);
+        } }),
+        el("p", { id: "date-read", class: "muted" }, dateRead(form.date))),
+      el("div", {},
+        el("label", { for: "account-input" }, "帳戶"),
+        accountSelect())),
+    el("details", moreAttrs,
+      el("summary", {}, "備註、專案、照片"),
+      el("label", { for: "project-input" }, "專案"),
+      projectSelect(),
+      el("label", { for: "memo-input" }, "備註"),
+      el("textarea", { id: "memo-input", rows: "2", maxlength: "200", onInput: (event) => { state.form.memo = event.target.value; } }, form.memo || ""),
+      el("label", { class: "file" },
+        el("input", { id: "photo-input", type: "file", accept: "image/*", onChange: onPhoto }),
+        "附上照片"),
+      el("p", { id: "photo-note", class: "muted" }, form.photoFileId ? "這筆已經有照片，再選一張會換掉。" : ""),
+      el("div", { id: "photo-preview" })));
+  const footer = el("div", { class: "savebar" },
     el("p", { id: "form-error", class: "bad" }),
-    el("div", { class: "savebar" },
-      el("button", { type: "button", class: "primary", id: "save-tx", onClick: go(saveForm) }, form.editing ? "儲存修改" : "記上一筆"),
-      form.editing ? el("button", { type: "button", class: "danger", onClick: go(() => removeTx(form.uid)) }, "刪除這筆") : null));
-  return sheetFrame(form.editing ? "編輯" : "記一筆", body);
+    el("button", { type: "button", class: "primary", id: "save-tx", onClick: go(saveForm) }, form.editing ? "儲存修改" : "記上一筆"),
+    form.editing ? el("button", { type: "button", class: "danger", onClick: go(() => removeTx(form.uid)) }, "刪除這筆") : null);
+  return sheetFrame(form.editing ? "編輯" : "記一筆", body, footer);
 }
 
 function accountSelect() {
@@ -1840,6 +1910,7 @@ function setType(type) {
     state.form.class2 = "";
   }
   paintType();
+  paintAmount();
   paintFrequent();
   paintCats();
   paintSubs();
@@ -1856,6 +1927,8 @@ function paintAmount() {
   const node = document.getElementById("amount-display");
   if (!node || !state.form) return;
   const text = state.form.amountStr || "";
+  node.classList.toggle("income", state.form.type === "income" && !!text);
+  node.classList.toggle("expense", state.form.type !== "income" && !!text);
   if (!text) {
     node.textContent = "0";
     node.classList.add("is-empty");
@@ -1914,7 +1987,16 @@ function paintCats() {
   }, el("span", { class: "emoji", "aria-hidden": "true" }, iconFor(cat.icon, cat.name)), el("span", {}, cat.name))));
 }
 
+function paintPicked() {
+  const node = document.getElementById("picked");
+  if (!node || !state.form) return;
+  const main = categoryByLevel(state.data, state.form.class1, "1");
+  const sub = categoryByLevel(state.data, state.form.class2, "2");
+  node.textContent = main || sub ? [main && main.name, sub && sub.name].filter(Boolean).join(" · ") : "先選分類";
+}
+
 function paintSubs() {
+  paintPicked();
   const host = document.getElementById("subs");
   if (!host || !state.form) return;
   const subs = subCats(state.data, state.form.class1);
@@ -2046,6 +2128,8 @@ async function saveForm() {
     });
     const result = await commit({ op: "upsertTx", row: row });
     localStorage.setItem("lastAccountId", row.accountId);
+    localStorage.setItem("lastClass1", row.class1 || "");
+    localStorage.setItem("lastClass2", row.class2 || "");
     if (String(state.data.settings.demo) === "1") {
       delete state.data.settings.demo;
       await saveSnapshot();
