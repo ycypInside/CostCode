@@ -89,7 +89,7 @@
   .unit { font-family: var(--font); font-size: 16px; margin-left: 6px; color: var(--muted); font-weight: 500; }
   .subline, .muted { color: var(--muted); }
   .bad { color: var(--danger); }
-  #form-error:empty, #api-error:empty { display: none; }
+  #form-error:empty, #api-error:empty, #project-error:empty { display: none; }
   .search input { width: 100%; margin-bottom: 8px; }
   input[type="date"]::-webkit-datetime-edit { color: var(--ink); }
   input:not([type="checkbox"]):not([type="file"]), select, textarea {
@@ -253,6 +253,9 @@
   .stat span { display: block; color: var(--muted); font-size: 12px; }
   .project { width: 100%; text-align: left; border: 0; padding: 16px; margin: 0 0 10px; }
   .project b { display: block; font-size: 18px; margin-bottom: 4px; }
+  .project span { display: block; }
+  .project .muted { font-size: 13px; margin-top: 2px; }
+  #add-project { margin-bottom: 12px; }
   .kv { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .kv span { color: var(--muted); }
   .kv strong { text-align: right; }
@@ -327,7 +330,7 @@
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
 <script>
-const APP_VERSION = "20261012-1128";
+const APP_VERSION = "20261012-1147";
 const REQUIRES_BACKEND = "20261009-1415";
 
 /*__PURE_START__*/
@@ -719,6 +722,18 @@ function projectToRow(project) {
   return [String(project.id), String(project.name || ""), project.memo == null ? "" : String(project.memo), project.color == null ? "" : String(project.color), Number(project.priority) || 0];
 }
 
+function publicProject(project) {
+  const id = project && project.id != null ? String(project.id).trim() : "";
+  const name = String((project && project.name) || "").trim();
+  return {
+    id: id,
+    name: name,
+    memo: project && project.memo != null ? String(project.memo).trim() : "",
+    color: project && project.color ? String(project.color) : "#1e4fd7",
+    priority: Number(project && project.priority) || 0,
+  };
+}
+
 function categoryToRow(category) {
   return [String(category.id), String(category.level), category.parentId == null ? "" : String(category.parentId), category.kind === "income" ? "income" : "expense", String(category.name || ""), String(category.icon || ""), Number(category.sortOrder) || 0];
 }
@@ -795,6 +810,13 @@ function applyOp(data, op) {
     else data.transactions.push(row);
   } else if (op.op === "deleteTx") {
     data.transactions = data.transactions.filter((tx) => tx.uid !== String(op.uid));
+  } else if (op.op === "upsertProject" && op.project) {
+    const project = publicProject(op.project);
+    if (project.id && project.id !== "0" && project.name) {
+      const index = data.projects.findIndex((item) => item.id === project.id);
+      if (index >= 0) data.projects[index] = project;
+      else data.projects.push(project);
+    }
   } else if (op.op === "setSetting" && op.key) {
     data.settings = Object.assign({}, data.settings, { [op.key]: op.value == null ? "" : String(op.value) });
   }
@@ -1045,7 +1067,7 @@ if (typeof window === "undefined") {
     mapMainRow, mapAccount, mapProject, mapClass1, mapClass2, inheritKind, mapReceipt, currencyCode,
     emptyData, applyOp, normalizeData, searchTransactions, searchLimited, budgetStatus, sumMonth,
     frequentPairs, projectStats, categoryBreakdown, groupByDate, planPhotos, receiptPathId,
-    categoryByLevel, resolveSubSelection, pairLabel, txTitle,
+    categoryByLevel, resolveSubSelection, pairLabel, txTitle, publicProject,
     starterData, buildDemo, batches, mainCats, subCats,
   };
 }
@@ -1228,6 +1250,7 @@ function overlayKey() {
   if (!state.overlay) return "";
   if (state.overlay.type === "form") return "form:" + ((state.form && state.form.uid) || "new");
   if (state.overlay.type === "detail") return "detail:" + state.overlay.uid;
+  if (state.overlay.type === "new-project") return "new-project";
   return "project:" + state.overlay.id;
 }
 
@@ -1544,18 +1567,30 @@ function renderBars(rows) {
 }
 
 function renderProjects() {
-  const projects = state.data.projects.slice().sort((a, b) => String(projectStats(state.data, b.id).end).localeCompare(String(projectStats(state.data, a.id).end)) || String(a.name).localeCompare(String(b.name), "zh-Hant"));
+  const projects = state.data.projects.slice().sort((a, b) => {
+    const as = projectStats(state.data, a.id);
+    const bs = projectStats(state.data, b.id);
+    if (!as.end !== !bs.end) return as.end ? 1 : -1;
+    return String(bs.end).localeCompare(String(as.end)) || String(a.name).localeCompare(String(b.name), "zh-Hant");
+  });
+  const add = el("button", { type: "button", class: "primary", id: "add-project", onClick: openNewProject }, "新增專案");
   if (!projects.length) {
-    return el("div", { class: "empty" }, el("p", {}, "還沒有專案"), el("p", { class: "muted" }, "匯入 CostDiary 後，旅遊團會出現在這裡。"));
+    return el("div", { class: "empty" },
+      el("p", {}, "還沒有專案"),
+      el("p", { class: "muted" }, "旅行、裝修、一趟聚餐，先取個名字。記帳時可以掛到這個專案。"),
+      add);
   }
-  return el("div", {}, projects.map((project) => {
-    const stats = projectStats(state.data, project.id);
-    const period = stats.start ? stats.start.replace(/-/g, "/") + " – " + stats.end.replace(/-/g, "/") : "還沒有明細";
-    return el("button", { type: "button", class: "project", onClick: () => openProject(project.id) },
-      el("b", {}, project.name),
-      el("span", {}, formatMoney(stats.total) + " 元"),
-      el("span", { class: "muted" }, period + " · " + stats.count + " 筆" + (stats.bookedDays ? " · 每記帳日 " + formatMoney(stats.avg) + " 元" : "")));
-  }));
+  return el("div", {},
+    add,
+    projects.map((project) => {
+      const stats = projectStats(state.data, project.id);
+      const period = stats.start ? stats.start.replace(/-/g, "/") + " – " + stats.end.replace(/-/g, "/") : "還沒有明細";
+      return el("button", { type: "button", class: "project", onClick: () => openProject(project.id) },
+        el("b", {}, project.name),
+        project.memo ? el("span", { class: "muted" }, project.memo) : null,
+        el("span", {}, formatMoney(stats.total) + " 元"),
+        el("span", { class: "muted" }, period + " · " + stats.count + " 筆" + (stats.bookedDays ? " · 每記帳日 " + formatMoney(stats.avg) + " 元" : "")));
+    }));
 }
 
 function renderSettings() {
@@ -1732,6 +1767,8 @@ async function sendOp(op) {
     await api("deleteTx", { uid: op.uid }, 30000);
   } else if (op.op === "setSetting") {
     await api("setSetting", { key: op.key, value: op.value }, 30000);
+  } else if (op.op === "upsertProject") {
+    await api("append", { sheet: "Projects", rows: [projectToRow(op.project)] }, 30000);
   }
 }
 
@@ -1915,7 +1952,7 @@ function lastCategory(kind) {
   return { class1: String(main.id), class2: "" };
 }
 
-function openForm(tx) {
+function openForm(tx, preset) {
   const accounts = state.data.accounts;
   const last = localStorage.getItem("lastAccountId") || "";
   const fallback = accounts.some((account) => String(account.id) === last) ? last : (accounts[0] ? accounts[0].id : "");
@@ -1929,7 +1966,7 @@ function openForm(tx) {
     class1: tx ? tx.class1 || "" : remembered.class1,
     class2: tx ? tx.class2 || "" : remembered.class2,
     accountId: tx ? tx.accountId || "" : fallback,
-    projectId: tx && tx.projectId ? tx.projectId : "",
+    projectId: tx && tx.projectId ? tx.projectId : (preset && preset.projectId) || "",
     date: tx && tx.date ? tx.date : (state.day || localISODate(new Date())),
     memo: tx && tx.memo ? tx.memo : "",
     invoiceId: tx && tx.invoiceId ? tx.invoiceId : "",
@@ -1953,6 +1990,10 @@ function openDetail(uid) {
   render();
 }
 
+function openFormForProject(projectId) {
+  openForm(null, { projectId: String(projectId || "") });
+}
+
 function openProject(id) {
   state.overlay = { type: "project", id: String(id) };
   render();
@@ -1961,6 +2002,53 @@ function openProject(id) {
 function closeSheet() {
   state.overlay = null;
   state.form = null;
+  state.projectForm = null;
+  render();
+}
+
+function openNewProject() {
+  state.projectForm = { name: "", memo: "" };
+  state.overlay = { type: "new-project" };
+  render();
+}
+
+function renderNewProject() {
+  const draft = state.projectForm || { name: "", memo: "" };
+  const body = el("div", {},
+    el("p", { class: "muted" }, "先取名字。之後記一筆時可以選這個專案，花費會算在一起。"),
+    el("label", { for: "project-name" }, "名稱"),
+    el("input", { id: "project-name", maxlength: "40", value: draft.name || "", placeholder: "例如：東京四天", onInput: (event) => { state.projectForm.name = event.target.value; } }),
+    el("label", { for: "project-memo" }, "備註"),
+    el("textarea", { id: "project-memo", rows: "3", maxlength: "200", placeholder: "想記的範圍，例如含出發前的機票", onInput: (event) => { state.projectForm.memo = event.target.value; } }, draft.memo || ""),
+    el("p", { id: "project-error", class: "bad" }));
+  const footer = el("div", { class: "dock" },
+    el("button", { type: "button", class: "primary", id: "save-project", onClick: go(saveProject) }, "建立專案"));
+  return sheetFrame("新增專案", body, footer);
+}
+
+async function saveProject() {
+  if (!state.projectForm) state.projectForm = { name: "", memo: "" };
+  const nameNode = document.getElementById("project-name");
+  const memoNode = document.getElementById("project-memo");
+  if (nameNode) state.projectForm.name = nameNode.value;
+  if (memoNode) state.projectForm.memo = memoNode.value;
+  const name = state.projectForm.name.trim();
+  const memo = state.projectForm.memo.trim();
+  const error = document.getElementById("project-error");
+  const show = (text) => { if (error) error.textContent = text || ""; };
+  if (!name) { show("請填專案名稱"); return; }
+  if (state.data.projects.some((project) => project.name.trim() === name)) { show("已經有同名的專案"); return; }
+  const project = publicProject({
+    id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: name,
+    memo: memo,
+    color: "#1e4fd7",
+    priority: 0,
+  });
+  const result = await commit({ op: "upsertProject", project: project });
+  state.overlay = null;
+  state.projectForm = null;
+  toast(result.queued ? "專案已記在這台手機，連線後上傳" : "已建立專案");
   render();
 }
 
@@ -1977,6 +2065,7 @@ function renderSheet() {
     paintCats();
     paintSubs();
   } else if (state.overlay.type === "detail") sheet.append(renderDetail(state.overlay.uid));
+  else if (state.overlay.type === "new-project") sheet.append(renderNewProject());
   else if (state.overlay.type === "project") sheet.append(renderProjectSheet(state.overlay.id));
 }
 
@@ -2390,6 +2479,7 @@ function renderProjectSheet(id) {
       stat("每記帳日平均", stats.bookedDays ? formatMoney(stats.avg) + " 元" : "—")),
     el("p", { class: "muted" }, "每記帳日平均是總支出除以有記下一筆的日子，不是全程的日曆天數。出發前先買的票會把期間拉長。"),
     breaks.length ? renderBars(breaks) : null,
+    el("button", { type: "button", class: "primary", id: "add-to-project", onClick: () => openFormForProject(project.id) }, "記一筆到這個專案"),
     el("div", { class: "list-card" }, stats.txs.length ? groupByDate(stats.txs).flatMap((group) => [el("div", { class: "dayh" }, el("span", {}, formatDayLabel(group.date))), ...group.items.map(renderTxButton)]) : el("p", { class: "muted" }, "這個專案還沒有明細。")));
   return sheetFrame(project.name, body);
 }
