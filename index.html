@@ -114,6 +114,47 @@
   .card { padding: 16px; margin: 0 0 12px; }
   .card h2, .sheet-top h2 { margin: 0; font-size: 18px; }
   .card p { margin: 0 0 8px; }
+  .dayhead-sub { margin: 2px 0 0; color: rgba(255,255,255,.8); font-size: 13px; font-weight: 500; }
+  .weekbar {
+    background: var(--card);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    margin: 0 0 12px;
+    position: sticky;
+    top: calc(var(--topbar-h, 58px) + 8px);
+    z-index: 12;
+  }
+  .weekrow { display: grid; grid-template-columns: 36px repeat(7, 1fr) 36px; align-items: center; }
+  .week-nav { border: 0; background: transparent; color: var(--blue); font-size: 26px; line-height: 1; height: 48px; }
+  .week-nav:disabled { color: #d5cdc3; }
+  .week-day {
+    border: 0; background: transparent; color: var(--muted);
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 8px 0 10px; min-height: 72px;
+  }
+  .week-day .dow { font-size: 11px; font-weight: 700; }
+  .week-day .dom {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+  .week-day[aria-current="date"] .dow { color: var(--blue); }
+  .week-day[aria-current="date"] .dom { background: var(--blue); color: white; }
+  .week-day.is-today:not([aria-current="date"]) .dom { box-shadow: inset 0 0 0 1.5px var(--blue); color: var(--blue); }
+  .week-day:disabled { opacity: .38; }
+  .week-dot { width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+  .week-dot.on { background: var(--expense); }
+  .week-dot.on.income { background: var(--income); }
+  .back-today {
+    display: block; margin: 0 auto 8px; border: 0; background: transparent;
+    color: var(--blue); font-weight: 700; font-size: 13px; min-height: 32px;
+  }
+  .dayline { margin: 0 2px 8px; font-weight: 700; }
+  .dayline strong { font-family: var(--num); font-size: 28px; font-weight: 560; letter-spacing: -0.03em; }
+  .dayline .expense { color: var(--expense); }
+  .dayline .income { color: var(--income); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .card-head .segment { margin: 0; }
   .dayh {
     display: flex; justify-content: space-between; gap: 8px;
     color: var(--muted); font-size: 13px; font-weight: 700;
@@ -204,6 +245,7 @@
   .track { margin-top: 4px; }
   .track > span, .budget-track > span { display: block; height: 100%; background: var(--blue); border-radius: 99px; }
   .bar-row { margin: 0 0 10px; }
+  body:not(.sheet-open) .bar-row { padding-right: 64px; }
   .bar-name { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
   .budget-track.over > span, .track > span { background: var(--expense); }
   .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
@@ -285,7 +327,7 @@
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
 <script>
-const APP_VERSION = "20261012-1037";
+const APP_VERSION = "20261012-1128";
 const REQUIRES_BACKEND = "20261009-1415";
 
 /*__PURE_START__*/
@@ -414,6 +456,21 @@ function weekday(date) {
 function formatDayLabel(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return date || "未填日期";
   return Number(date.slice(5, 7)) + "月" + Number(date.slice(8, 10)) + "日";
+}
+
+function shiftISO(iso, delta) {
+  const parsed = parseISODate(iso);
+  if (!parsed) return iso || "";
+  return localISODate(addDays(parsed, delta));
+}
+
+function weekDates(iso) {
+  const parsed = parseISODate(iso) || new Date();
+  const index = parsed.getDay();
+  const monday = addDays(parsed, index === 0 ? -6 : 1 - index);
+  const days = [];
+  for (let i = 0; i < 7; i++) days.push(localISODate(addDays(monday, i)));
+  return days;
 }
 
 function monthTitle(ym) {
@@ -983,7 +1040,7 @@ if (typeof window === "undefined") {
   this.__test = {
     decodeSdate, normalizeLooseDate, localISODate, addDays, shiftMonth, monthKeysLast12, clampDay,
     taipeiFromUnix, formatMoney, round2, isDeleted, normalizeColor, versionStatus, isAllowedApiUrl, iconFor, weekday,
-    formatDayLabel, monthTitle, TX_HEADERS, ACCOUNT_HEADERS, PROJECT_HEADERS, CATEGORY_HEADERS, ITEM_HEADERS,
+    formatDayLabel, monthTitle, shiftISO, weekDates, TX_HEADERS, ACCOUNT_HEADERS, PROJECT_HEADERS, CATEGORY_HEADERS, ITEM_HEADERS,
     IMPORT_CLEAR_SHEETS, txToRow, accountToRow, projectToRow, categoryToRow, itemToRow, publicTx,
     mapMainRow, mapAccount, mapProject, mapClass1, mapClass2, inheritKind, mapReceipt, currencyCode,
     emptyData, applyOp, normalizeData, searchTransactions, searchLimited, budgetStatus, sumMonth,
@@ -1010,7 +1067,8 @@ const state = {
   form: null,
   booting: true,
   statsKind: "expense",
-  ledgerKind: "",
+  ledgerKind: "expense",
+  day: "",
   budgetDraft: null,
 };
 const importUi = { phase: "idle", message: "", error: "", summary: null, resume: false, fileName: "" };
@@ -1101,15 +1159,34 @@ function paintFooter() {
   if (welcome) welcome.textContent = text;
 }
 
+function focusDay(iso) {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso : localISODate(new Date());
+  state.day = day;
+  state.month = day.slice(0, 7);
+}
+
+function activeKind() {
+  return state.ledgerKind === "income" ? "income" : "expense";
+}
+
+function ledgerTitle(day) {
+  const today = localISODate(new Date());
+  if (day === today) return "今天";
+  if (day === localISODate(addDays(new Date(), -1))) return "昨天";
+  return formatDayLabel(day);
+}
+
 function renderChrome() {
-  if (!state.month) state.month = localISODate(new Date()).slice(0, 7);
+  if (!state.day) focusDay(localISODate(new Date()));
   const bar = document.getElementById("topbar");
   bar.replaceChildren();
   if (state.mode !== "unset" && state.tab === "ledger") {
-    bar.append(el("div", { class: "monthline" },
-      el("button", { type: "button", id: "month-prev", "aria-label": "上個月" }, "‹"),
-      el("h1", {}, monthTitle(state.month)),
-      el("button", { type: "button", id: "month-next", "aria-label": "下個月" }, "›")));
+    const day = state.day;
+    const title = ledgerTitle(day);
+    const sub = title === "今天" || title === "昨天" ? formatDayLabel(day) + " " + weekday(day) : weekday(day);
+    bar.append(el("div", { class: "dayhead" },
+      el("h1", {}, title),
+      el("p", { class: "dayhead-sub" }, sub)));
   } else {
     const titles = { ledger: "明細", stats: "統計", projects: "專案", settings: "設定" };
     bar.append(el("h1", {}, state.mode === "unset" ? "日用帳" : titles[state.tab]));
@@ -1227,27 +1304,33 @@ function renderApiForm() {
 
 function renderLedgerShell() {
   return el("div", {},
+    el("div", { id: "weekbar", class: "weekbar" }),
+    el("div", { id: "summary" }),
+    el("div", { class: "chips", id: "kind-filter" }, ["expense", "income"].map((kind) => {
+      const label = kind === "expense" ? "支出" : "收入";
+      return el("button", {
+        type: "button", class: "chip", "aria-pressed": activeKind() === kind ? "true" : "false",
+        onClick: () => { state.ledgerKind = kind; render(); },
+      }, label);
+    })),
     el("div", { class: "search" }, el("input", {
       id: "q", type: "search", placeholder: "搜尋備註、分類、金額、發票品項", value: state.query,
       autocomplete: "off", enterkeyhint: "search", "aria-label": "搜尋",
       onInput: (event) => { state.query = event.target.value; paintLedger(); },
     })),
-    el("div", { class: "chips", id: "kind-filter" }, ["", "expense", "income"].map((kind) => {
-      const label = kind === "expense" ? "支出" : (kind === "income" ? "收入" : "全部");
-      return el("button", {
-        type: "button", class: "chip", "aria-pressed": state.ledgerKind === kind ? "true" : "false",
-        onClick: () => { state.ledgerKind = kind; render(); },
-      }, label);
-    })),
-    el("div", { id: "summary" }),
     el("div", { id: "list", class: "list-card" }));
 }
 
 function visibleTransactions() {
+  const kind = activeKind();
   const query = state.query.trim();
-  if (query) return searchLimited(state.data, query, 300);
-  let rows = state.data.transactions.filter((tx) => String(tx.date || "").slice(0, 7) === state.month);
-  if (state.ledgerKind === "expense" || state.ledgerKind === "income") rows = rows.filter((tx) => tx.type === state.ledgerKind);
+  if (query) {
+    const view = searchLimited(state.data, query, 300);
+    const rows = view.rows.filter((tx) => tx.type === kind);
+    return { rows: rows, total: rows.length, truncated: view.truncated && rows.length >= 300 };
+  }
+  const day = state.day || localISODate(new Date());
+  const rows = state.data.transactions.filter((tx) => tx.date === day && tx.type === kind);
   return { rows: rows, total: rows.length, truncated: false };
 }
 
@@ -1263,45 +1346,109 @@ function dayHeading(date) {
 function paintLedger() {
   const summary = document.getElementById("summary");
   const list = document.getElementById("list");
+  const week = document.getElementById("weekbar");
   if (!summary || !list) return;
-  summary.replaceChildren(renderSummary());
+  const searching = !!state.query.trim();
+  if (week) {
+    week.hidden = searching;
+    week.replaceChildren();
+    if (!searching) week.append(renderWeek());
+  }
+  const summaryNode = renderSummary();
+  summary.replaceChildren();
+  if (summaryNode) summary.append(summaryNode);
   const nodes = renderTxList();
   list.replaceChildren.apply(list, nodes);
 }
 
+function renderWeek() {
+  const today = localISODate(new Date());
+  const selected = state.day || today;
+  const days = weekDates(selected);
+  const kind = activeKind();
+  const labels = ["一", "二", "三", "四", "五", "六", "日"];
+  const marked = {};
+  state.data.transactions.forEach((tx) => {
+    if (tx.type === kind && tx.date) marked[tx.date] = true;
+  });
+  return el("div", {},
+    el("div", { class: "weekrow" },
+      el("button", { type: "button", class: "week-nav", "aria-label": "上一週", onClick: () => moveWeek(-1) }, "‹"),
+      days.map((iso, index) => {
+        const future = iso > today;
+        const attrs = {
+          type: "button",
+          class: "week-day" + (iso === today ? " is-today" : ""),
+          "aria-label": formatDayLabel(iso) + " " + weekday(iso) + (iso === today ? " 今天" : ""),
+        };
+        if (iso === selected) attrs["aria-current"] = "date";
+        if (future) attrs.disabled = true;
+        else attrs.onClick = () => { focusDay(iso); state.query = ""; render(); };
+        return el("button", attrs,
+          el("span", { class: "dow" }, labels[index]),
+          el("span", { class: "dom" }, String(Number(iso.slice(8, 10)))),
+          el("span", { class: "week-dot" + (marked[iso] ? " on" + (kind === "income" ? " income" : "") : "") }));
+      }),
+      el("button", {
+        type: "button", class: "week-nav", "aria-label": "下一週",
+        disabled: selected >= today,
+        onClick: () => moveWeek(1),
+      }, "›")),
+    selected === today ? null : el("button", {
+      type: "button", class: "back-today",
+      onClick: () => { focusDay(today); state.query = ""; render(); },
+    }, "回到今天"));
+}
+
+function moveWeek(delta) {
+  const today = localISODate(new Date());
+  let next = shiftISO(state.day || today, delta * 7);
+  if (next > today) next = today;
+  focusDay(next);
+  state.query = "";
+  render();
+}
+
 function renderSummary() {
+  const view = visibleTransactions();
   if (state.query.trim()) {
-    const view = searchLimited(state.data, state.query, 300);
     return el("div", { class: "hero" },
-      el("p", { class: "eyebrow" }, "搜尋全部期間"),
+      el("p", { class: "eyebrow" }, "搜尋" + (activeKind() === "income" ? "收入" : "支出")),
       el("p", { class: "hero-num" }, String(view.total)),
       el("p", { class: "subline" }, view.total ? "筆符合" + (view.truncated ? "，畫面上先顯示 300 筆" : "") : "沒有符合的帳"));
   }
-  const expense = sumMonth(state.data.transactions, state.month, "expense");
-  const income = sumMonth(state.data.transactions, state.month, "income");
-  return el("div", { class: "hero" },
-    el("p", { class: "eyebrow" }, "本月支出"),
-    el("p", { class: "hero-num" }, formatMoney(expense), el("span", { class: "unit" }, "元")),
-    el("p", { class: "subline" }, "收入 " + formatMoney(income) + " · 結餘 " + formatMoney(income - expense)));
+  const total = round2(view.rows.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0));
+  if (!(total > 0)) return null;
+  const day = state.day || localISODate(new Date());
+  const name = day === localISODate(new Date()) ? "今天" : formatDayLabel(day);
+  const kind = activeKind();
+  return el("p", { class: "dayline" },
+    name + (kind === "income" ? "收入 " : "花了 "),
+    el("strong", { class: kind }, formatMoney(total)),
+    " 元");
 }
 
 function renderTxList() {
   const view = visibleTransactions();
+  const kind = activeKind();
+  const day = state.day || localISODate(new Date());
   if (!view.rows.length) {
     if (state.query.trim()) return [el("div", { class: "empty" }, el("p", {}, "沒有符合的帳"), el("p", { class: "muted" }, "試試分類、備註、金額或發票品項，多個詞要同時符合。"))];
-    if (state.ledgerKind) return [el("div", { class: "empty" }, el("p", {}, "這個月份沒有" + (state.ledgerKind === "income" ? "收入" : "支出")))];
+    if (kind === "income") return [el("div", { class: "empty" }, el("p", {}, "這天沒有收入"), el("p", { class: "muted" }, "收入平常收在這裡，打開才看得到。"))];
+    const name = ledgerTitle(day);
     return [el("div", { class: "empty" },
-      el("p", {}, monthTitle(state.month) + "還沒有記帳"),
+      el("p", {}, name + "還沒有記帳"),
       el("p", { class: "muted" }, "用餐、交通，一筆就好。"),
       el("button", { type: "button", class: "primary", id: "empty-add", onClick: () => openForm(null) }, "記一筆"))];
+  }
+  if (!state.query.trim()) {
+    return view.rows.slice().sort((a, b) => String(b.modifiedAt || "").localeCompare(String(a.modifiedAt || "")) || String(b.uid).localeCompare(String(a.uid))).map(renderTxButton);
   }
   const nodes = [];
   if (view.truncated) nodes.push(el("p", { class: "muted" }, "只顯示前 300 筆，請再加關鍵字。共 " + view.total + " 筆。"));
   groupByDate(view.rows).forEach((group) => {
-    const sumText = group.income && group.expense
-      ? "支出 " + formatMoney(group.expense) + " · 收入 " + formatMoney(group.income)
-      : (group.income ? "收入 " + formatMoney(group.income) : formatMoney(group.expense));
-    nodes.push(el("div", { class: "dayh" }, el("span", {}, dayHeading(group.date)), el("span", {}, sumText)));
+    const sum = kind === "income" ? group.income : group.expense;
+    nodes.push(el("div", { class: "dayh" }, el("span", {}, dayHeading(group.date)), el("span", {}, formatMoney(sum))));
     group.items.forEach((tx) => nodes.push(renderTxButton(tx)));
   });
   return nodes;
@@ -1338,38 +1485,46 @@ function renderStats() {
       el("input", { id: "budget-input", inputmode: "decimal", "aria-label": "每月預算", value: state.budgetDraft != null ? state.budgetDraft : (state.data.settings.monthlyBudget || ""), onInput: (event) => { state.budgetDraft = event.target.value; } }),
       el("button", { type: "button", class: "primary", id: "save-budget", onClick: go(saveBudget) }, "儲存預算")),
     el("section", { class: "card" },
-      el("h2", {}, "近 12 個月"),
-      el("p", { class: "legend" }, el("span", { class: "dot expense" }, "支出"), el("span", { class: "dot income" }, "收入")),
+      el("div", { class: "card-head" },
+        el("h2", {}, "近 12 個月"),
+        el("div", { class: "segment fit" },
+          el("button", { type: "button", "aria-pressed": state.statsKind === "expense" ? "true" : "false", onClick: () => { state.statsKind = "expense"; render(); } }, "支出"),
+          el("button", { type: "button", "aria-pressed": state.statsKind === "income" ? "true" : "false", onClick: () => { state.statsKind = "income"; render(); } }, "收入"))),
       renderChart(monthKeysLast12(today)),
       el("p", { class: "muted" }, "點月份會打開那個月的明細。")),
     el("section", { class: "card" },
-      el("h2", {}, "這個月的分類"),
-      el("div", { class: "segment fit" },
-        el("button", { type: "button", "aria-pressed": state.statsKind === "expense" ? "true" : "false", onClick: () => { state.statsKind = "expense"; render(); } }, "支出"),
-        el("button", { type: "button", "aria-pressed": state.statsKind === "income" ? "true" : "false", onClick: () => { state.statsKind = "income"; render(); } }, "收入")),
+      el("h2", {}, "這個月的" + (state.statsKind === "income" ? "收入" : "支出")),
       breaks.length ? renderBars(breaks) : el("p", { class: "muted" }, "這個月還沒有這類帳。")));
 }
 
 function renderChart(keys) {
   const width = 360;
   const height = 176;
-  const expenses = keys.map((key) => sumMonth(state.data.transactions, key, "expense"));
-  const incomes = keys.map((key) => sumMonth(state.data.transactions, key, "income"));
-  const max = Math.max.apply(null, [1].concat(expenses, incomes));
+  const kind = state.statsKind === "income" ? "income" : "expense";
+  const values = keys.map((key) => sumMonth(state.data.transactions, key, kind));
+  const max = Math.max.apply(null, [1].concat(values));
   const slot = width / keys.length;
   const current = localISODate(new Date()).slice(0, 7);
-  const svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: "chart", role: "group", "aria-label": "近 12 個月收支" });
+  const color = kind === "income" ? "#0c7a58" : "#c84b2f";
+  const kindLabel = kind === "income" ? "收入" : "支出";
+  const svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, class: "chart", role: "group", "aria-label": "近 12 個月" + kindLabel });
   keys.forEach((key, index) => {
     const x = index * slot;
     if (key === current) svg.append(svgEl("rect", { x: x + 1, y: 8, width: Math.max(slot - 2, 1), height: 124, rx: 6, fill: "#e7eeff" }));
-    const expenseH = expenses[index] ? Math.max(2, Math.round(expenses[index] / max * 112)) : 0;
-    const incomeH = incomes[index] ? Math.max(2, Math.round(incomes[index] / max * 112)) : 0;
+    const barH = values[index] ? Math.max(2, Math.round(values[index] / max * 112)) : 0;
     const base = 132;
-    if (expenseH) svg.append(svgEl("rect", { x: x + slot * 0.18, y: base - expenseH, width: slot * 0.28, height: expenseH, rx: 2, fill: "#c84b2f" }));
-    if (incomeH) svg.append(svgEl("rect", { x: x + slot * 0.52, y: base - incomeH, width: slot * 0.28, height: incomeH, rx: 2, fill: "#0c7a58" }));
+    if (barH) svg.append(svgEl("rect", { x: x + slot * 0.28, y: base - barH, width: slot * 0.44, height: barH, rx: 2, fill: color }));
     svg.append(svgEl("text", { x: x + slot / 2, y: 156, "text-anchor": "middle", fill: key === current ? "#1e4fd7" : "#6f675f", "font-size": "11" }, String(Number(key.slice(5)))));
-    const hit = svgEl("rect", { x: x, y: 0, width: slot, height: height, fill: "transparent", role: "button", tabindex: "0", "aria-label": monthTitle(key) + " 支出 " + formatMoney(expenses[index]) + " 元，收入 " + formatMoney(incomes[index]) + " 元" });
-    const open = () => { state.month = key; state.tab = "ledger"; state.query = ""; state.overlay = null; render(); };
+    const hit = svgEl("rect", { x: x, y: 0, width: slot, height: height, fill: "transparent", role: "button", tabindex: "0", "aria-label": monthTitle(key) + " " + kindLabel + " " + formatMoney(values[index]) + " 元" });
+    const open = () => {
+      const today = localISODate(new Date());
+      focusDay(key === today.slice(0, 7) ? today : key + "-01");
+      state.tab = "ledger";
+      state.query = "";
+      state.ledgerKind = kind;
+      state.overlay = null;
+      render();
+    };
     hit.addEventListener("click", open);
     hit.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
@@ -1646,7 +1801,8 @@ async function loadDemo() {
   if (state.data.transactions.length && !window.confirm("載入範例會取代這台手機上現在的帳。")) return;
   state.data = buildDemo(new Date());
   await saveSnapshot();
-  state.month = localISODate(new Date()).slice(0, 7);
+  focusDay(localISODate(new Date()));
+  state.ledgerKind = "expense";
   state.tab = "ledger";
   toast("已載入範例");
   render();
@@ -1763,17 +1919,18 @@ function openForm(tx) {
   const accounts = state.data.accounts;
   const last = localStorage.getItem("lastAccountId") || "";
   const fallback = accounts.some((account) => String(account.id) === last) ? last : (accounts[0] ? accounts[0].id : "");
-  const remembered = tx ? null : lastCategory(tx ? tx.type : "expense");
+  const kind = tx ? tx.type : activeKind();
+  const remembered = tx ? null : lastCategory(kind);
   state.form = {
     editing: !!tx,
     uid: tx ? tx.uid : "",
-    type: tx ? tx.type : "expense",
+    type: kind,
     amountStr: tx ? amountToStr(tx.amount) : "",
     class1: tx ? tx.class1 || "" : remembered.class1,
     class2: tx ? tx.class2 || "" : remembered.class2,
     accountId: tx ? tx.accountId || "" : fallback,
     projectId: tx && tx.projectId ? tx.projectId : "",
-    date: tx && tx.date ? tx.date : localISODate(new Date()),
+    date: tx && tx.date ? tx.date : (state.day || localISODate(new Date())),
     memo: tx && tx.memo ? tx.memo : "",
     invoiceId: tx && tx.invoiceId ? tx.invoiceId : "",
     photoData: "",
@@ -2149,6 +2306,9 @@ async function saveForm() {
     }
     state.overlay = null;
     state.form = null;
+    focusDay(row.date || localISODate(new Date()));
+    state.ledgerKind = row.type === "income" ? "income" : "expense";
+    state.query = "";
     toast(result.queued ? "已記在這台手機，連線後上傳" : (row.createdAt === now && !result.queued ? "已記上一筆" : "已儲存"));
     render();
   } catch (error) {
@@ -2440,7 +2600,8 @@ async function importLocal(bundle) {
   importBundle = null;
   importUi.phase = "idle";
   importUi.summary = null;
-  state.month = localISODate(new Date()).slice(0, 7);
+  focusDay(localISODate(new Date()));
+  state.ledgerKind = "expense";
   state.tab = "ledger";
   toast("已載入 " + next.transactions.length + " 筆到這台手機");
   render();
@@ -2542,7 +2703,7 @@ async function boot() {
   if (url && token) state.mode = "cloud";
   else if (localStorage.getItem("ledgerMode") === "local") state.mode = "local";
   else state.mode = "unset";
-  state.month = localISODate(new Date()).slice(0, 7);
+  focusDay(localISODate(new Date()));
   state.booting = false;
   render();
   if (state.mode === "cloud") refreshCloud();
