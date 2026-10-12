@@ -118,7 +118,7 @@
     display: flex; justify-content: space-between; gap: 8px;
     color: var(--muted); font-size: 13px; font-weight: 700;
     padding: 14px 14px 4px; margin: 0 -12px;
-    position: sticky; top: calc(58px + env(safe-area-inset-top));
+    position: sticky; top: var(--topbar-h, calc(58px + env(safe-area-inset-top)));
     background: var(--card); z-index: 2;
   }
   .tx {
@@ -134,6 +134,8 @@
     text-align: left;
   }
   .tx:last-child { border-bottom: 0; }
+  body:not(.sheet-open) #view .tx { padding-right: 64px; }
+  body:not(.sheet-open) #view .dayh { padding-right: 72px; }
   .emoji { width: 42px; height: 42px; border-radius: 14px; background: var(--blue-soft); display: grid; place-items: center; font-size: 20px; }
   .tx-main { display: flex; flex-direction: column; min-width: 0; }
   .tx-title { font-weight: 700; }
@@ -154,16 +156,18 @@
   .banner.bad { background: #fde8e4; color: #8a2e1b; }
   .banner button { margin-left: 8px; border: 0; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; min-height: 32px; }
   .segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: #e4ddd2; border-radius: 14px; }
+  .segment.fit { display: inline-grid; grid-template-columns: 88px 88px; width: auto; }
   .segment button { border: 0; background: transparent; min-height: 40px; border-radius: 11px; color: var(--muted); font-weight: 700; }
   .segment button[aria-pressed="true"] { background: white; color: var(--ink); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
   .chip { border: 1px solid transparent; background: var(--card); border-radius: 999px; padding: 8px 12px; }
   .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .cat .emoji { width: 36px; height: 36px; border-radius: 12px; font-size: 18px; }
   .cat {
     border: 1px solid transparent;
     background: var(--card);
     border-radius: 16px;
-    padding: 10px 4px;
+    padding: 8px 2px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -171,18 +175,22 @@
     font-size: 12px;
   }
   .chip[aria-pressed="true"], .cat[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); }
-  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 10px; }
-  .pad button { height: 46px; border: 0; border-radius: 14px; background: var(--card); font-size: 22px; font-variant-numeric: tabular-nums; }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 0 0 8px; }
+  .pad button { height: 36px; border: 0; border-radius: 12px; background: white; font-size: 20px; font-variant-numeric: tabular-nums; }
   .pad button:active { background: var(--blue-soft); }
-  .savebar {
+  .sheet-pin { position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 6px; }
+  .sheet-pin .hero-num { font-size: 40px; }
+  .dock {
     flex: none;
-    padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
+    padding: 6px 16px calc(6px + env(safe-area-inset-bottom));
     background: var(--bg);
     border-top: 1px solid var(--line);
   }
-  .savebar .primary, .savebar .danger { margin-top: 0; }
-  .savebar .danger { margin-top: 4px; }
-  .sheet-body input, .sheet-body select, .sheet-body textarea, .sheet-body .chip, .sheet-body .cat { scroll-margin-bottom: 92px; }
+  .dock .primary, .dock .danger { margin-top: 0; }
+  .dock .danger { margin-top: 4px; }
+  #frequent.chips { flex-wrap: nowrap; overflow-x: auto; margin-bottom: 8px; }
+  #frequent .chip { flex: none; }
+  .sheet-body input, .sheet-body select, .sheet-body textarea, .sheet-body .chip, .sheet-body .cat { scroll-margin-bottom: 280px; }
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
   .picked { margin: 0 0 8px; font-weight: 700; min-height: 24px; }
   .more { margin: 4px 0 8px; }
@@ -243,13 +251,13 @@
   .sheet-wrap { width: min(480px, 100%); height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
   .sheet-top { display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 8px 8px; }
   .ghost { border: 0; background: transparent; color: var(--blue); font-weight: 700; min-height: 44px; padding: 0 10px; }
-  .sheet-body { flex: 1; overflow: auto; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .sheet-body { flex: 1; overflow: auto; padding: 4px 16px 8px; }
   #toast {
-    position: fixed; z-index: 40;
-    left: max(16px, calc(50vw - 240px + 16px));
-    bottom: calc(var(--nav-h) + 18px);
-    max-width: min(250px, calc(100% - 108px));
-    background: var(--ink); color: white; border-radius: 999px; padding: 12px 16px;
+    position: fixed; z-index: 40; left: 50%; transform: translateX(-50%);
+    top: calc(10px + env(safe-area-inset-top));
+    max-width: min(260px, calc(100% - 128px));
+    background: rgba(12, 28, 84, .92); color: white; border-radius: 999px;
+    padding: 8px 12px; font-size: 13px;
     pointer-events: none;
   }
   body.sheet-open #toast { display: none !important; }
@@ -277,7 +285,7 @@
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
 <script>
-const APP_VERSION = "20261012-0232";
+const APP_VERSION = "20261012-1037";
 const REQUIRES_BACKEND = "20261009-1415";
 
 /*__PURE_START__*/
@@ -1111,6 +1119,7 @@ function renderChrome() {
   if (state.mode === "cloud" && !state.online) flags.append(el("span", {}, "離線"));
   if (state.pending) flags.append(el("span", {}, state.pending + " 筆待上傳"));
   if (flags.childNodes.length) bar.append(flags);
+  document.documentElement.style.setProperty("--topbar-h", bar.offsetHeight + "px");
   const tabs = document.getElementById("tabs");
   tabs.replaceChildren.apply(tabs, [["ledger", "明細"], ["stats", "統計"], ["projects", "專案"], ["settings", "設定"]].map((item) => {
     const attrs = { type: "button", "data-tab": item[0] };
@@ -1335,7 +1344,7 @@ function renderStats() {
       el("p", { class: "muted" }, "點月份會打開那個月的明細。")),
     el("section", { class: "card" },
       el("h2", {}, "這個月的分類"),
-      el("div", { class: "segment" },
+      el("div", { class: "segment fit" },
         el("button", { type: "button", "aria-pressed": state.statsKind === "expense" ? "true" : "false", onClick: () => { state.statsKind = "expense"; render(); } }, "支出"),
         el("button", { type: "button", "aria-pressed": state.statsKind === "income" ? "true" : "false", onClick: () => { state.statsKind = "income"; render(); } }, "收入")),
       breaks.length ? renderBars(breaks) : el("p", { class: "muted" }, "這個月還沒有這類帳。")));
@@ -1834,14 +1843,13 @@ function renderForm() {
   const moreAttrs = { class: "more" };
   if (showMore) moreAttrs.open = true;
   const body = el("div", {},
-    el("div", { class: "segment", id: "type-switch" },
-      el("button", { type: "button", id: "type-expense", onClick: () => setType("expense") }, "支出"),
-      el("button", { type: "button", id: "type-income", onClick: () => setType("income") }, "收入")),
-    el("div", { class: "amount-block" }, el("p", { class: "eyebrow" }, "金額"), el("p", { id: "amount-display", class: "hero-num is-empty" }, "0")),
-    el("div", { id: "pad", class: "pad" }, ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "←"].map((key) =>
-      el("button", { type: "button", onClick: () => { pushDigit(key); paintAmount(); paintFormError(""); } }, key))),
-    el("p", { class: "eyebrow" }, "常用"),
-    el("div", { id: "frequent", class: "chips" }),
+    el("div", { class: "sheet-pin" },
+      el("div", { class: "segment", id: "type-switch" },
+        el("button", { type: "button", id: "type-expense", onClick: () => setType("expense") }, "支出"),
+        el("button", { type: "button", id: "type-income", onClick: () => setType("income") }, "收入")),
+      el("div", { class: "amount-block" }, el("p", { class: "eyebrow" }, "金額"), el("p", { id: "amount-display", class: "hero-num is-empty" }, "0"))),
+    el("p", { class: "eyebrow", id: "frequent-label", hidden: true }, "常用"),
+    el("div", { id: "frequent", class: "chips", hidden: true }),
     el("p", { id: "picked", class: "picked" }, "先選分類"),
     el("div", { id: "cat-grid", class: "grid4" }),
     el("div", { id: "subs", class: "chips" }),
@@ -1868,7 +1876,9 @@ function renderForm() {
         "附上照片"),
       el("p", { id: "photo-note", class: "muted" }, form.photoFileId ? "這筆已經有照片，再選一張會換掉。" : ""),
       el("div", { id: "photo-preview" })));
-  const footer = el("div", { class: "savebar" },
+  const footer = el("div", { class: "dock" },
+    el("div", { id: "pad", class: "pad" }, ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "←"].map((key) =>
+      el("button", { type: "button", onClick: () => { pushDigit(key); paintAmount(); paintFormError(""); } }, key))),
     el("p", { id: "form-error", class: "bad" }),
     el("button", { type: "button", class: "primary", id: "save-tx", onClick: go(saveForm) }, form.editing ? "儲存修改" : "記上一筆"),
     form.editing ? el("button", { type: "button", class: "danger", onClick: go(() => removeTx(form.uid)) }, "刪除這筆") : null);
@@ -1958,10 +1968,13 @@ function pushDigit(key) {
 
 function paintFrequent() {
   const host = document.getElementById("frequent");
+  const label = document.getElementById("frequent-label");
   if (!host || !state.form) return;
   const pairs = frequentPairs(state.data, state.form.type, new Date(), 120);
+  host.hidden = !pairs.length;
+  if (label) label.hidden = !pairs.length;
   if (!pairs.length) {
-    host.replaceChildren(el("span", { class: "muted" }, "最近還沒有常用分類"));
+    host.replaceChildren();
     return;
   }
   host.replaceChildren.apply(host, pairs.map((pair) => {
