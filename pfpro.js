@@ -461,15 +461,23 @@
   var PF_GET_TIMEOUT_MS = 15000;
   var ACCOUNT_TTL_MS = 12 * 60 * 60 * 1000;
 
+  function permanentRejection(payload) {
+    if (!payload || payload.ok) return false;
+    if (payload.replay === true && String(payload.status || "") === "rejected") return true;
+    var error = String(payload.error || "");
+    var ref = String(payload.result_ref || "");
+    return /^V\d/.test(error) || /^V\d/.test(ref);
+  }
+
   function shouldRetryPost(payload, attempt) {
     if (attempt >= 2) return false;
     if (!payload || payload.ok) return false;
+    if (permanentRejection(payload)) return false;
     var reason = String(payload.reason || "");
     if (reason === "mismatch" || reason === "missing_secret") return false;
     if (reason === "missing_token" || reason === "parse_error" || reason === "lost_body") return true;
     if (reason) return false;
     var error = String(payload.error || "");
-    if (error.indexOf("V9") === 0) return false;
     if (error === "busy") return false;
     return error === "unauthorized" || error === "bad json" || error === "unknown q" || error === "parse_error" || error === "server";
   }
@@ -498,6 +506,7 @@
     if (text === "busy") return "PF Pro 正在寫入，請稍後再試。";
     if (text === "server") return "PF Pro 暫時沒有回應。";
     if (why === "lost_body" || text === "parse_error") return "送出的內容在轉址時遺失。已沿用同一個 request_id 重試。";
+    if (text.indexOf("V10") === 0) return "PF Pro 那筆已被修改或作廢，這次修改未寫入，請重新整理後再改。";
     if (text.indexOf("V9") === 0) return "這筆的 request_id 已經用過，而且內容不一樣。請不要改舊的 request_id。";
     return text;
   }
@@ -514,6 +523,11 @@
 
   function replaceBody(txnId, data) {
     return { txn_id: txnId, void_reason: "CostCode 修改", data: data };
+  }
+
+  function replaceTarget(entry, pending) {
+    if (entry && entry.txnId) return entry.txnId;
+    return pending && pending.data && pending.data.txn_id || "";
   }
 
   function queueWrite(queue, entry) {
@@ -541,7 +555,7 @@
         uid: entry.uid,
         action: "replace_transaction",
         requestId: pending.requestId,
-        data: replaceBody(pending.data.txn_id, entry.data),
+        data: replaceBody(replaceTarget(entry, pending), entry.data),
         local: entry.local || null
       });
       return rest;
@@ -647,7 +661,7 @@
         leg: entry.leg || pending.leg || "",
         action: "replace_transaction",
         requestId: pending.requestId,
-        data: replaceBody(pending.data.txn_id, entry.data),
+        data: replaceBody(replaceTarget(entry, pending), entry.data),
         local: local
       });
       return rest;
@@ -779,6 +793,59 @@
     return grab("year") + "-" + grab("month") + "-" + grab("day") + "T" + grab("hour") + ":" + grab("minute") + ":" + grab("second") + "+08:00";
   }
 
+  var STUCK_REPLACE = {
+    requestId: "cc-nmvgvexe3bz6h5-r3",
+    uid: "nmvgvexe3bz6h5",
+    txnId: "TX-20261020-2a94f3",
+    accountId: "ACC-FUBON-TWD",
+    flag: "pfFix-cc-nmvgvexe3bz6h5-r3"
+  };
+
+  function migrateStuckReplace(input) {
+    var state = input || {};
+    var queueIn = Array.isArray(state.queue) ? state.queue : [];
+    var removed = false;
+    var queue = queueIn.filter(function (op) {
+      var drop = !!(op && op.requestId === STUCK_REPLACE.requestId);
+      if (drop) removed = true;
+      return !drop;
+    });
+    var metaIn = state.meta && typeof state.meta === "object" ? state.meta : {};
+    var meta = {};
+    Object.keys(metaIn).forEach(function (key) {
+      var value = metaIn[key];
+      if (value && typeof value === "object") {
+        var copy = {};
+        Object.keys(value).forEach(function (field) { copy[field] = value[field]; });
+        meta[key] = copy;
+      } else meta[key] = value;
+    });
+    var prev = meta[STUCK_REPLACE.uid] || {};
+    var next = {};
+    Object.keys(prev).forEach(function (field) { next[field] = prev[field]; });
+    var metaChanged = next.txnId !== STUCK_REPLACE.txnId;
+    next.txnId = STUCK_REPLACE.txnId;
+    meta[STUCK_REPLACE.uid] = next;
+    var txIn = Array.isArray(state.transactions) ? state.transactions : [];
+    var accountChanged = false;
+    var transactions = txIn.map(function (tx) {
+      if (!tx || tx.uid !== STUCK_REPLACE.uid) return tx;
+      if (String(tx.accountId || "") === STUCK_REPLACE.accountId) return tx;
+      accountChanged = true;
+      var copy = {};
+      Object.keys(tx).forEach(function (field) { copy[field] = tx[field]; });
+      copy.accountId = STUCK_REPLACE.accountId;
+      return copy;
+    });
+    return {
+      queue: queue,
+      meta: meta,
+      transactions: transactions,
+      changed: removed || metaChanged || accountChanged,
+      flag: STUCK_REPLACE.flag
+    };
+  }
+
   function selfCheck() {
     var cases = [];
     function check(name, ok, detail) {
@@ -864,7 +931,10 @@
     var afterSync = queueWrite([], { uid: "u1", requestId: "cc-u1-r1", data: food.data, replace: true, txnId: "TX1" });
     check("已入帳的修改走 replace", afterSync[0].action === "replace_transaction" && afterSync[0].requestId === "cc-u1-r1" && afterSync[0].data.txn_id === "TX1" && afterSync[0].data.data.category === "餐飲");
     var again = queueWrite(afterSync, { uid: "u1", requestId: "cc-u1-r2", data: Object.assign({}, food.data, { amount: -10 }), replace: true, txnId: "TX1" });
-    check("未送出的 replace 不換 request_id", again[0].requestId === "cc-u1-r1" && again[0].data.data.amount === -10);
+    check("未送出的 replace 不換 request_id", again[0].requestId === "cc-u1-r1" && again[0].data.data.amount === -10 && again[0].data.txn_id === "TX1");
+    var quickFirst = queueWrite([], { uid: "u1", requestId: "cc-u1-r1", data: food.data, replace: true, txnId: "TX-OLD" });
+    var quickSecond = queueWrite(quickFirst, { uid: "u1", requestId: "cc-u1-r2", data: Object.assign({}, food.data, { amount: -10 }), replace: true, txnId: "TX-NEW" });
+    check("快速連改用最新 txn", quickSecond.length === 1 && quickSecond[0].action === "replace_transaction" && quickSecond[0].requestId === "cc-u1-r1" && quickSecond[0].data.txn_id === "TX-NEW" && quickSecond[0].data.data.amount === -10, JSON.stringify(quickSecond));
     var voidQueued = queueVoid(queued, { uid: "u1", txnId: "" });
     check("未入帳就刪除", voidQueued.length === 1 && voidQueued[0].voidAfter === true && voidQueued[0].action === "add_transaction" && voidQueued[0].requestId === "cc-u1");
     var voidKnown = queueVoid(queued, { uid: "u1", txnId: "TX9" });
@@ -956,6 +1026,19 @@
     check("帳戶快取 12 小時", ACCOUNT_TTL_MS === ttl && accountCacheFresh(1000, 1000 + ttl - 1) && !accountCacheFresh(1000, 1000 + ttl) && !accountCacheFresh("", 1000) && !accountCacheFresh(5000, 4000));
     check("讀取逾時", PF_GET_TIMEOUT_MS === 15000);
     check("request_id 維持原樣", food.requestId === "cc-u1" && split.legs[0].requestId === "cc-u-exp" && split.legs[1].requestId === "cc-u-adv" && repay.requestId === "cc-r1-repay");
+    var replayRejected = { ok: false, replay: true, status: "rejected", result_ref: "V10: can only replace an active row" };
+    check("重播拒絕不再重試", permanentRejection(replayRejected) && !replayRejected.error && !shouldRetryPost(replayRejected, 0) && !shouldRetryPost(replayRejected, 1) && explainError(replayRejected.error || replayRejected.result_ref) === "PF Pro 那筆已被修改或作廢，這次修改未寫入，請重新整理後再改。" && explainError(undefined) === "發生錯誤" && permanentRejection({ ok: false, error: "V9: request_id reused with different payload" }) && permanentRejection({ ok: false, result_ref: "V10: can only replace an active row" }) && !permanentRejection({ ok: false, error: "server" }) && !permanentRejection({ ok: false, error: "busy" }) && !permanentRejection({ ok: true, replay: true }));
+    var stuck = migrateStuckReplace({
+      queue: [
+        { requestId: "cc-keep", uid: "other", action: "add_transaction" },
+        { requestId: "cc-nmvgvexe3bz6h5-r3", uid: "nmvgvexe3bz6h5", action: "replace_transaction", data: { txn_id: "TX-VOID" } }
+      ],
+      meta: { nmvgvexe3bz6h5: { txnId: "TX-VOID", requestId: "cc-nmvgvexe3bz6h5-r2", rev: 2, friendName: "小明" }, other: { txnId: "TX-KEEP" } },
+      transactions: [{ uid: "nmvgvexe3bz6h5", accountId: "ACC-CC-1", amount: 80 }, { uid: "other", accountId: "cash" }]
+    });
+    var stuckAgain = migrateStuckReplace({ queue: stuck.queue, meta: stuck.meta, transactions: stuck.transactions });
+    var stuckEmpty = migrateStuckReplace({ queue: [], meta: {}, transactions: [] });
+    check("卡住的 r3 遷移", stuck.changed && stuck.queue.length === 1 && stuck.queue[0].requestId === "cc-keep" && stuck.meta.nmvgvexe3bz6h5.txnId === "TX-20261020-2a94f3" && stuck.meta.nmvgvexe3bz6h5.friendName === "小明" && stuck.meta.nmvgvexe3bz6h5.rev === 2 && stuck.meta.other.txnId === "TX-KEEP" && stuck.transactions[0].accountId === "ACC-FUBON-TWD" && stuck.transactions[0].amount === 80 && stuck.transactions[1].accountId === "cash" && stuck.flag === "pfFix-cc-nmvgvexe3bz6h5-r3" && !stuckAgain.changed && stuckAgain.meta.nmvgvexe3bz6h5.txnId === "TX-20261020-2a94f3" && stuckEmpty.transactions.length === 0 && stuckEmpty.queue.length === 0 && stuckEmpty.meta.nmvgvexe3bz6h5.txnId === "TX-20261020-2a94f3", JSON.stringify(stuck));
 
     return { ok: cases.every(function (item) { return item.ok; }), cases: cases };
   }
@@ -990,6 +1073,8 @@
     PF_GET_TIMEOUT_MS: PF_GET_TIMEOUT_MS,
     ACCOUNT_TTL_MS: ACCOUNT_TTL_MS,
     explainError: explainError,
+    permanentRejection: permanentRejection,
+    migrateStuckReplace: migrateStuckReplace,
     txnIdFromResponse: txnIdFromResponse,
     queueWrite: queueWrite,
     queueVoid: queueVoid,

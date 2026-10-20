@@ -332,9 +332,9 @@
 </div>
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
-<script src="pfpro.js?v=20261021-0115"></script>
+<script src="pfpro.js?v=20261021-0145"></script>
 <script>
-const APP_VERSION = "20261021-0115";
+const APP_VERSION = "20261021-0145";
 const REQUIRES_BACKEND = "20261020-1715";
 
 /*__PURE_START__*/
@@ -2004,6 +2004,35 @@ function forgetPfTxn(uid) {
   savePfMeta(meta);
 }
 
+function dropStaleReplaceMapping(uid) {
+  const meta = loadPfMeta();
+  const prev = meta[uid];
+  if (!prev || !prev.txnId) return;
+  prev.txnId = "";
+  meta[uid] = prev;
+  savePfMeta(meta);
+}
+
+function recordPfFailure(op, reason) {
+  let rows = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem("pfFailed") || "[]");
+    if (Array.isArray(parsed)) rows = parsed;
+  } catch (error) {
+    rows = [];
+  }
+  const requestId = op && op.requestId || "";
+  rows = rows.filter((row) => row && row.requestId !== requestId);
+  rows.unshift({
+    requestId: requestId,
+    uid: op && op.uid || "",
+    action: op && op.action || "",
+    reason: reason || "",
+    at: Date.now(),
+  });
+  localStorage.setItem("pfFailed", JSON.stringify(rows.slice(0, 12)));
+}
+
 function expenseVoidId(uid, requestId) {
   return String(requestId || "").indexOf("-exp") >= 0 ? ("cc-" + uid + "-exp-void") : ("cc-" + uid + "-void");
 }
@@ -2094,10 +2123,10 @@ async function readPfQueue() {
 async function enqueuePfTx(row, reimburse) {
   const plan = previewPfTx(row, reimburse);
   if (!plan.ok) throw new Error(plan.error);
-  const meta = loadPfMeta()[row.uid] || {};
-  const rev = (meta.rev || 0) + 1;
-  const requestId = meta.txnId ? ("cc-" + row.uid + "-r" + rev) : plan.requestId;
   await withPfLock(async () => {
+    const meta = loadPfMeta()[row.uid] || {};
+    const rev = (meta.rev || 0) + 1;
+    const requestId = meta.txnId || meta.rev ? ("cc-" + row.uid + "-r" + rev) : plan.requestId;
     const queue = await readPfQueue();
     const next = PfPro.queueWrite(queue, {
       uid: row.uid,
@@ -2172,7 +2201,7 @@ async function enqueuePfLegs(row, plan) {
         uid: row.uid,
         leg: "exp",
         action: "add_transaction",
-        requestId: txnId ? (leg.requestId + "-r" + rev) : leg.requestId,
+        requestId: txnId || meta.rev ? (leg.requestId + "-r" + rev) : leg.requestId,
         data: leg.data,
         replace: !!txnId,
         txnId: txnId,
@@ -2386,18 +2415,33 @@ async function pfPost(action, data, requestId, creds) {
     last = await pfPostOnce(endpoint, body);
     if (!PfPro.shouldRetryPost(last, attempt)) break;
   }
-  if (!last || !last.ok) throw new Error(PfPro.explainError(last && last.error, last && last.reason));
+  if (!last || !last.ok) {
+    const err = new Error(PfPro.explainError(last && (last.error || last.result_ref), last && last.reason));
+    err.pf = last || null;
+    err.permanent = PfPro.permanentRejection(last);
+    throw err;
+  }
   return last;
 }
 
 async function flushPfQueue() {
   return withPfLock(async () => {
     const queue = await readPfQueue();
-    if (!queue.length) { state.pending = 0; return; }
-    if (!navigator.onLine) { state.pending = queue.length; return; }
+    if (!queue.length) { state.pending = 0; return { permanent: false }; }
+    if (!navigator.onLine) { state.pending = queue.length; return { permanent: false }; }
     const remain = [];
+    let permanent = false;
+    let followNewTxn = false;
     for (let i = 0; i < queue.length; i++) {
       let op = queue[i];
+      if (followNewTxn && op.action === "replace_transaction") {
+        const mapped = (loadPfMeta()[op.uid] || {}).txnId || "";
+        if (mapped && op.data && op.data.data && op.data.txn_id !== mapped) {
+          op = Object.assign({}, op, {
+            data: { txn_id: mapped, void_reason: op.data.void_reason || "CostCode 修改", data: op.data.data },
+          });
+        }
+      }
       try {
         const res = await pfPost(op.action, op.data, op.requestId);
         const txnId = PfPro.txnIdFromResponse(res);
@@ -2416,7 +2460,19 @@ async function flushPfQueue() {
         } else if (op.action === "add_transfer") {
           savePayLog(loadPayLog().map((row) => row.requestId === op.requestId ? Object.assign({}, row, { state: "done" }) : row));
         }
+        followNewTxn = true;
       } catch (error) {
+        if (error && error.permanent) {
+          const payload = error.pf || {};
+          const reason = PfPro.explainError(payload.error || payload.result_ref, payload.reason);
+          recordPfFailure(op, reason);
+          const text = String(payload.error || payload.result_ref || "");
+          if (op.action === "replace_transaction" && text.indexOf("V10") === 0) dropStaleReplaceMapping(op.uid);
+          permanent = true;
+          state.loadError = "有變更還沒寫入 PF Pro：" + reason;
+          followNewTxn = true;
+          continue;
+        }
         if (op.voidAfter) {
           const meta = loadPfMeta()[op.uid] || {};
           const known = op.leg === "adv" ? ((meta.adv && meta.adv.txnId) || "") : (meta.txnId || "");
@@ -2440,7 +2496,8 @@ async function flushPfQueue() {
     }
     await kvSet("pfQueue", remain);
     state.pending = remain.length;
-    if (!remain.length) state.loadError = "";
+    if (!remain.length && !permanent) state.loadError = "";
+    return { permanent: permanent };
   });
 }
 
@@ -2505,9 +2562,9 @@ async function refreshPf(options) {
   state.syncing = true;
   renderChrome();
   try {
-    await flushPfQueue();
+    const flushed = await flushPfQueue();
     if (navigator.onLine && (forceAccounts || pfAccountCacheStale())) await fetchPfAccounts();
-    if (!state.pending) state.loadError = "";
+    if (!state.pending && !(flushed && flushed.permanent)) state.loadError = "";
   } catch (error) {
     state.loadError = messageOf(error);
   } finally {
@@ -4055,6 +4112,23 @@ async function pushBundle(bundle, options) {
   state.syncing = false;
 }
 
+async function applyStuckReplaceFix() {
+  const probe = PfPro.migrateStuckReplace({ queue: [], meta: {}, transactions: [] });
+  if (localStorage.getItem(probe.flag) === "1") return;
+  const queue = (await kvGet("pfQueue")) || [];
+  const migrated = PfPro.migrateStuckReplace({
+    queue: queue,
+    meta: loadPfMeta(),
+    transactions: state.data.transactions,
+  });
+  state.data.transactions = migrated.transactions.map((tx) => normalizeTx(tx));
+  savePfMeta(migrated.meta);
+  await kvSet("pfQueue", migrated.queue);
+  await saveSnapshot();
+  state.pfQueueBoot = migrated.queue.length;
+  localStorage.setItem(migrated.flag, "1");
+}
+
 async function boot() {
   state.online = navigator.onLine;
   try {
@@ -4066,6 +4140,7 @@ async function boot() {
     queue.forEach((op) => applyOp(state.data, op));
     pfQueue.forEach((op) => { if (op && op.local) applyOp(state.data, op.local); });
     state.pfQueueBoot = pfQueue.length;
+    await applyStuckReplaceFix();
   } catch (error) {
     state.loadError = "讀不到這台手機上的備份";
   }
