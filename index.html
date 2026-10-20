@@ -197,6 +197,7 @@
   .banner.bad { background: #fde8e4; color: #8a2e1b; }
   .banner button { margin-left: 8px; border: 0; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; min-height: 32px; }
   .segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: #e4ddd2; border-radius: 14px; }
+  .segment.thirds { grid-template-columns: 1fr 1fr 1fr; }
   .segment.fit { display: inline-grid; grid-template-columns: 88px 88px; width: auto; }
   .segment button { border: 0; background: transparent; min-height: 40px; border-radius: 11px; color: var(--muted); font-weight: 700; }
   .segment button[aria-pressed="true"] { background: white; color: var(--ink); }
@@ -329,9 +330,9 @@
 </div>
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
-<script src="pfpro.js?v=20261020-1715"></script>
+<script src="pfpro.js?v=20261020-2215"></script>
 <script>
-const APP_VERSION = "20261020-1715";
+const APP_VERSION = "20261020-2215";
 const REQUIRES_BACKEND = "20261020-1715";
 
 /*__PURE_START__*/
@@ -1089,6 +1090,7 @@ const state = {
   overlay: null,
   form: null,
   cardPay: null,
+  repay: null,
   pfAccounts: [],
   settingsFocus: "",
   sheetPending: 0,
@@ -1259,6 +1261,7 @@ function overlayKey() {
   if (state.overlay.type === "detail") return "detail:" + state.overlay.uid;
   if (state.overlay.type === "new-project") return "new-project";
   if (state.overlay.type === "cardpay") return "cardpay";
+  if (state.overlay.type === "repay") return "repay";
   return "project:" + state.overlay.id;
 }
 
@@ -1274,6 +1277,7 @@ function render() {
     if (!typing) {
       if (state.form) readFormDom();
       if (state.cardPay) readCardPayDom();
+      if (state.repay) readRepayDom();
       renderSheet();
       paintedOverlay = key;
     } else sheet.hidden = false;
@@ -1341,8 +1345,9 @@ function renderApiForm() {
 function renderLedgerShell() {
   return el("div", {},
     state.mode === "pfpro" ? el("div", { class: "card" },
-      el("p", { class: "muted" }, "週檢視是這台手機記下來的帳。新的支出會另寫進 PF Pro，不會把舊帳整批補傳。"),
-      el("button", { type: "button", class: "secondary", id: "pay-card", onClick: openCardPay }, "繳卡費")) : null,
+      el("p", { class: "muted" }, "週檢視是這台手機記下來的帳。新的支出會另寫進 PF Pro，不會把舊帳整批補傳。幫朋友代墊的部分不算進自己的支出。"),
+      el("button", { type: "button", class: "secondary", id: "pay-card", onClick: openCardPay }, "繳卡費"),
+      el("button", { type: "button", class: "secondary", id: "repay-friend", onClick: openRepay }, "朋友還錢")) : null,
     el("div", { id: "weekbar", class: "weekbar" }),
     el("div", { id: "summary" }),
     el("div", { class: "chips", id: "kind-filter" }, ["expense", "income"].map((kind) => {
@@ -1767,6 +1772,22 @@ async function enqueue(op) {
 
 async function commit(op) {
   if (state.mode === "pfpro" && op.op === "upsertTx") {
+    if (pfEntryUsesSplit(op.row)) {
+      const plan = previewPfSplit(op.row);
+      if (!plan.ok) throw new Error(plan.error);
+      if (plan.wholeAdvance) {
+        if (state.data.transactions.some((tx) => tx.uid === op.row.uid)) applyOp(state.data, { op: "deleteTx", uid: op.row.uid });
+      } else {
+        op.row.amount = plan.localAmount;
+        op.row.type = plan.localType === "income" ? "income" : "expense";
+        applyOp(state.data, op);
+      }
+      await enqueuePfLegs(op.row, plan);
+      await saveSnapshot();
+      if (!navigator.onLine) return { queued: true, plan: plan };
+      await flushPfQueue();
+      return { queued: state.pending > 0, plan: plan };
+    }
     const preview = previewPfTx(op.row, !!(state.form && state.form.reimburse));
     if (!preview.ok) throw new Error(preview.error);
     applyOp(state.data, op);
@@ -1903,12 +1924,54 @@ function savePfMeta(meta) {
 function rememberPfTxn(uid, txnId, requestId, reimburse) {
   const meta = loadPfMeta();
   const prev = meta[uid] || {};
-  meta[uid] = {
+  const next = {
     txnId: txnId || prev.txnId || "",
     requestId: requestId || prev.requestId || "",
     rev: Math.max(prev.rev || 0, PfPro.revOf(requestId)),
     reimburse: reimburse == null ? !!prev.reimburse : !!reimburse,
   };
+  if (prev.friendName) next.friendName = prev.friendName;
+  if (prev.advance) next.advance = prev.advance;
+  if (prev.adv) next.adv = prev.adv;
+  meta[uid] = next;
+  savePfMeta(meta);
+}
+
+function rememberAdvTxn(uid, txnId, requestId) {
+  const meta = loadPfMeta();
+  const prev = meta[uid] || {};
+  const prior = prev.adv || {};
+  prev.adv = {
+    txnId: txnId || prior.txnId || "",
+    requestId: requestId || prior.requestId || "",
+    rev: Math.max(prior.rev || 0, PfPro.revOf(requestId)),
+  };
+  meta[uid] = prev;
+  savePfMeta(meta);
+}
+
+function clearExpenseMeta(uid) {
+  const meta = loadPfMeta();
+  const prev = meta[uid];
+  if (!prev) return;
+  prev.txnId = "";
+  prev.requestId = "";
+  prev.rev = 0;
+  prev.reimburse = false;
+  if (!prev.adv) delete meta[uid];
+  else meta[uid] = prev;
+  savePfMeta(meta);
+}
+
+function clearAdvMeta(uid) {
+  const meta = loadPfMeta();
+  const prev = meta[uid];
+  if (!prev) return;
+  delete prev.adv;
+  delete prev.friendName;
+  delete prev.advance;
+  if (!prev.txnId && !prev.requestId) delete meta[uid];
+  else meta[uid] = prev;
   savePfMeta(meta);
 }
 
@@ -1916,6 +1979,15 @@ function forgetPfTxn(uid) {
   const meta = loadPfMeta();
   delete meta[uid];
   savePfMeta(meta);
+}
+
+function expenseVoidId(uid, requestId) {
+  return String(requestId || "").indexOf("-exp") >= 0 ? ("cc-" + uid + "-exp-void") : ("cc-" + uid + "-void");
+}
+
+function advVoidId(uid, advMeta) {
+  const rev = advMeta && advMeta.rev ? advMeta.rev : 0;
+  return "cc-" + uid + "-adv-void" + (rev ? ("-r" + rev) : "");
 }
 
 function loadPayLog() {
@@ -1958,6 +2030,38 @@ function previewPfTx(row, reimburse) {
   });
 }
 
+function previewPfSplit(row) {
+  const form = state.form || {};
+  const main = categoryByLevel(state.data, row.class1, "1");
+  const sub = categoryByLevel(state.data, row.class2, "2");
+  const account = (state.pfAccounts || []).find((item) => item.id === String(row.accountId));
+  const mode = form.type === "advance" ? "advance" : (row.type === "income" ? "income" : "expense");
+  return PfPro.planSplit({
+    uid: row.uid,
+    date: row.date,
+    type: mode === "income" ? "income" : "expense",
+    mode: mode,
+    amount: round2(row.amount),
+    advance: mode === "advance" ? round2(row.amount) : parseAmount(form.advanceStr),
+    accountId: row.accountId,
+    currency: account && account.currency ? account.currency : "TWD",
+    accountType: account && account.type,
+    mainName: main && main.name,
+    subName: sub && sub.name,
+    memo: row.memo,
+    reimburse: !!form.reimburse,
+    friendName: form.friendName || "",
+  });
+}
+
+function pfEntryUsesSplit(row) {
+  const form = state.form || {};
+  if (form.type === "advance") return true;
+  if (parseAmount(form.advanceStr) > 0) return true;
+  const meta = row && row.uid ? (loadPfMeta()[row.uid] || {}) : {};
+  return !!(meta.adv || Number(meta.advance) > 0);
+}
+
 async function readPfQueue() {
   return (await kvGet("pfQueue")) || [];
 }
@@ -1985,13 +2089,135 @@ async function enqueuePfTx(row, reimburse) {
   });
 }
 
+async function enqueuePfLegs(row, plan) {
+  await withPfLock(async () => {
+    let queue = await readPfQueue();
+    const meta = loadPfMeta()[row.uid] || {};
+    const wantAdv = plan.legs.some((leg) => leg.leg === "adv");
+    const wantExp = plan.legs.some((leg) => leg.action === "add_transaction");
+    if (!wantAdv) {
+      queue = PfPro.queueVoidLeg(queue, {
+        uid: row.uid,
+        leg: "adv",
+        txnId: (meta.adv && meta.adv.txnId) || "",
+        voidRequestId: advVoidId(row.uid, meta.adv),
+        dropUnsent: true,
+        local: null,
+      });
+    }
+    if (!wantExp) {
+      queue = PfPro.queueVoidLeg(queue, {
+        uid: row.uid,
+        leg: "exp",
+        txnId: meta.txnId || "",
+        voidRequestId: expenseVoidId(row.uid, meta.requestId),
+        dropUnsent: true,
+        local: { op: "deleteTx", uid: row.uid },
+      });
+    }
+    plan.legs.forEach((leg) => {
+      if (leg.leg === "adv") {
+        const advMeta = meta.adv || {};
+        if (advMeta.txnId) {
+          const rev = (advMeta.rev || 0) + 1;
+          queue = PfPro.queueTransferEdit(queue, {
+            uid: row.uid,
+            leg: "adv",
+            txnId: advMeta.txnId,
+            voidRequestId: advVoidId(row.uid, advMeta),
+            requestId: "cc-" + row.uid + "-adv-r" + rev,
+            data: leg.data,
+            local: plan.wholeAdvance ? { op: "deleteTx", uid: row.uid } : null,
+          });
+        } else {
+          queue = PfPro.queueLeg(queue, {
+            uid: row.uid,
+            leg: "adv",
+            action: "add_transfer",
+            requestId: leg.requestId,
+            data: leg.data,
+            local: plan.wholeAdvance ? { op: "deleteTx", uid: row.uid } : null,
+          });
+        }
+        return;
+      }
+      const txnId = meta.txnId || "";
+      const rev = (meta.rev || 0) + 1;
+      queue = PfPro.queueLeg(queue, {
+        uid: row.uid,
+        leg: "exp",
+        action: "add_transaction",
+        requestId: txnId ? (leg.requestId + "-r" + rev) : leg.requestId,
+        data: leg.data,
+        replace: !!txnId,
+        txnId: txnId,
+        local: { op: "upsertTx", row: row },
+      });
+    });
+    const expOp = queue.filter((op) => op && op.uid === row.uid && (op.action === "add_transaction" || op.action === "replace_transaction")).pop();
+    const advOp = queue.filter((op) => op && op.uid === row.uid && op.leg === "adv" && op.action === "add_transfer").pop();
+    const all = loadPfMeta();
+    const prev = all[row.uid] || {};
+    const stored = {
+      txnId: prev.txnId || meta.txnId || "",
+      requestId: expOp ? expOp.requestId : (wantExp ? (prev.requestId || "") : ""),
+      rev: expOp ? Math.max(prev.rev || 0, PfPro.revOf(expOp.requestId)) : (wantExp ? (prev.rev || 0) : 0),
+      reimburse: !!(state.form && state.form.reimburse && plan.legs.some((leg) => leg.category === "工作")),
+    };
+    if (plan.advance > 0) {
+      stored.friendName = plan.friendName;
+      stored.advance = plan.advance;
+    }
+    if (wantAdv) {
+      stored.adv = {
+        txnId: (meta.adv && meta.adv.txnId) || "",
+        requestId: advOp ? advOp.requestId : ((meta.adv && meta.adv.requestId) || ""),
+        rev: advOp ? Math.max((meta.adv && meta.adv.rev) || 0, PfPro.revOf(advOp.requestId)) : ((meta.adv && meta.adv.rev) || 0),
+      };
+    } else if (meta.adv && meta.adv.txnId) stored.adv = meta.adv;
+    all[row.uid] = stored;
+    savePfMeta(all);
+    await kvSet("pfQueue", queue);
+    state.pending = queue.length;
+    if (wantAdv && stored.adv) {
+      pushPayLog({
+        kind: "advance",
+        requestId: stored.adv.requestId,
+        date: row.date,
+        amount: plan.advance,
+        fromName: displayAccountName(row.accountId),
+        toName: PfPro.AR_FRIENDS_NAME,
+        friendName: plan.friendName,
+      });
+    }
+  });
+}
+
 async function enqueuePfDelete(uid) {
   const meta = loadPfMeta()[uid] || {};
   await withPfLock(async () => {
-    const queue = await readPfQueue();
-    const next = PfPro.queueVoid(queue, { uid: uid, txnId: meta.txnId || "" });
-    await kvSet("pfQueue", next);
-    state.pending = next.length;
+    let queue = await readPfQueue();
+    const split = !!(meta.adv || Number(meta.advance) > 0 || queue.some((op) => op && op.uid === uid && op.leg === "adv"));
+    if (split) {
+      queue = PfPro.queueVoidLeg(queue, {
+        uid: uid,
+        leg: "exp",
+        txnId: meta.txnId || "",
+        voidRequestId: expenseVoidId(uid, meta.requestId),
+        dropUnsent: false,
+        local: { op: "deleteTx", uid: uid },
+      });
+      queue = PfPro.queueVoidLeg(queue, {
+        uid: uid,
+        leg: "adv",
+        txnId: (meta.adv && meta.adv.txnId) || "",
+        voidRequestId: advVoidId(uid, meta.adv),
+        dropUnsent: false,
+        local: null,
+      });
+    } else queue = PfPro.queueVoid(queue, { uid: uid, txnId: meta.txnId || "" });
+    await kvSet("pfQueue", queue);
+    state.pending = queue.length;
   });
 }
 
@@ -2006,16 +2232,55 @@ async function enqueuePfTransfer(plan, note) {
     });
     await kvSet("pfQueue", next);
     state.pending = next.length;
-    const log = loadPayLog();
-    log.unshift({
+    pushPayLog({
+      kind: note.kind || "card",
       requestId: plan.requestId,
-      state: "queued",
       date: note.date,
       amount: note.amount,
       fromName: note.fromName,
       toName: note.toName,
+      friendName: note.friendName || "",
     });
-    savePayLog(log);
+  });
+}
+
+function pushPayLog(entry) {
+  const log = loadPayLog().filter((row) => row.requestId !== entry.requestId);
+  log.unshift({
+    kind: entry.kind || "card",
+    requestId: entry.requestId,
+    state: "queued",
+    date: entry.date || "",
+    amount: entry.amount,
+    fromName: entry.fromName || "",
+    toName: entry.toName || "",
+    friendName: entry.friendName || "",
+  });
+  savePayLog(log);
+}
+
+async function enqueuePfRepay(plan, note) {
+  await withPfLock(async () => {
+    const queue = await readPfQueue();
+    const next = PfPro.queueLeg(queue, {
+      uid: plan.uid,
+      leg: "repay",
+      action: "add_transfer",
+      requestId: plan.requestId,
+      data: plan.data,
+      local: null,
+    });
+    await kvSet("pfQueue", next);
+    state.pending = next.length;
+    pushPayLog({
+      kind: "repay",
+      requestId: plan.requestId,
+      date: note.date,
+      amount: note.amount,
+      fromName: PfPro.AR_FRIENDS_NAME,
+      toName: note.toName,
+      friendName: note.friendName,
+    });
   });
 }
 
@@ -2107,26 +2372,31 @@ async function flushPfQueue() {
         if ((op.action === "add_transaction" || op.action === "replace_transaction") && txnId) {
           rememberPfTxn(op.uid, txnId, op.requestId);
         }
+        if (op.leg === "adv" && op.action === "add_transfer" && txnId) rememberAdvTxn(op.uid, txnId, op.requestId);
         if (op.voidAfter) {
           if (!txnId) throw new Error("PF Pro 沒有回傳交易編號，暫時無法刪除遠端那一筆");
-          await pfPost("void_transaction", { txn_id: txnId, void_reason: "CostCode 刪除" }, "cc-" + op.uid + "-void");
-          forgetPfTxn(op.uid);
+          await pfPost("void_transaction", { txn_id: txnId, void_reason: "CostCode 刪除" }, op.voidRequestId || ("cc-" + op.uid + "-void"));
+          if (op.leg === "adv") clearAdvMeta(op.uid);
+          else clearExpenseMeta(op.uid);
         } else if (op.action === "void_transaction") {
-          forgetPfTxn(op.uid);
+          if (op.leg === "adv") clearAdvMeta(op.uid);
+          else clearExpenseMeta(op.uid);
         } else if (op.action === "add_transfer") {
           savePayLog(loadPayLog().map((row) => row.requestId === op.requestId ? Object.assign({}, row, { state: "done" }) : row));
         }
       } catch (error) {
         if (op.voidAfter) {
-          const known = (loadPfMeta()[op.uid] || {}).txnId;
+          const meta = loadPfMeta()[op.uid] || {};
+          const known = op.leg === "adv" ? ((meta.adv && meta.adv.txnId) || "") : (meta.txnId || "");
           if (known) {
             op = {
               kind: "void",
               uid: op.uid,
+              leg: op.leg || "",
               action: "void_transaction",
-              requestId: "cc-" + op.uid + "-void",
+              requestId: op.voidRequestId || ("cc-" + op.uid + "-void"),
               data: { txn_id: known, void_reason: "CostCode 刪除" },
-              local: { op: "deleteTx", uid: op.uid },
+              local: op.leg === "adv" ? null : { op: "deleteTx", uid: op.uid },
             };
           }
         }
@@ -2190,11 +2460,12 @@ function renderPfCard() {
     el("h2", {}, "PF Pro"),
     el("p", { class: "muted" }, state.mode === "pfpro"
       ? ("已連線。可記帳帳戶 " + count + " 個（現金、銀行、信用卡）。手機上原來的明細會留著，不會整批寫進 PF Pro。刪除只作廢 PF Pro 裡對應的那一筆。")
-      : "填好之後，新的支出、手續費和繳卡費會寫進 PF Pro。網址和 API key 只留在這台瀏覽器。"),
+      : "填好之後，新的支出、手續費、代墊和繳卡費會寫進 PF Pro。網址和 API key 只留在這台瀏覽器。"),
     state.sheetPending ? el("p", { class: "muted" }, "另外還有 " + state.sheetPending + " 筆試算表變更未上傳。改回試算表模式後會補傳。") : null,
     renderPfForm(),
     el("button", { type: "button", class: "secondary", id: "refresh-pf-accounts", onClick: go(refreshPf) }, "重新讀取帳戶"),
-    el("button", { type: "button", class: "secondary", onClick: openCardPay }, "繳卡費"));
+    el("button", { type: "button", class: "secondary", onClick: openCardPay }, "繳卡費"),
+    el("button", { type: "button", class: "secondary", onClick: openRepay }, "朋友還錢"));
 }
 
 function renderPfAccounts() {
@@ -2438,11 +2709,15 @@ function openForm(tx, preset) {
   const fallback = defaultAccountId(tx);
   const kind = tx ? tx.type : activeKind();
   const remembered = tx ? null : lastCategory(kind);
+  const prior = tx && tx.uid ? (loadPfMeta()[tx.uid] || {}) : {};
+  const priorAdvance = round2(prior.advance || 0);
   state.form = {
     editing: !!tx,
     uid: tx ? tx.uid : "",
     type: kind,
-    amountStr: tx ? amountToStr(tx.amount) : "",
+    amountStr: tx ? amountToStr(priorAdvance > 0 ? round2(Number(tx.amount) + priorAdvance) : tx.amount) : "",
+    advanceStr: priorAdvance > 0 ? amountToStr(priorAdvance) : "",
+    friendName: prior.friendName || "",
     class1: tx ? tx.class1 || "" : remembered.class1,
     class2: tx ? tx.class2 || "" : remembered.class2,
     accountId: tx ? tx.accountId || "" : fallback,
@@ -2454,7 +2729,7 @@ function openForm(tx, preset) {
     photoName: "",
     photoFileId: tx && tx.photoFileId ? tx.photoFileId : "",
     createdAt: tx && tx.createdAt ? tx.createdAt : "",
-    reimburse: !!(tx && tx.uid && (loadPfMeta()[tx.uid] || {}).reimburse),
+    reimburse: !!prior.reimburse,
     saving: false,
   };
   if (pfActive()) {
@@ -2495,6 +2770,7 @@ function closeSheet() {
   state.form = null;
   state.projectForm = null;
   state.cardPay = null;
+  state.repay = null;
   render();
 }
 
@@ -2560,6 +2836,7 @@ function renderSheet() {
   else if (state.overlay.type === "new-project") sheet.append(renderNewProject());
   else if (state.overlay.type === "project") sheet.append(renderProjectSheet(state.overlay.id));
   else if (state.overlay.type === "cardpay") sheet.append(renderCardPay());
+  else if (state.overlay.type === "repay") sheet.append(renderRepay());
 }
 
 function sheetFrame(title, body, footer) {
@@ -2583,10 +2860,11 @@ function renderForm() {
   if (showMore) moreAttrs.open = true;
   const body = el("div", {},
     el("div", { class: "sheet-pin" },
-      el("div", { class: "segment", id: "type-switch" },
+      el("div", { class: pfActive() ? "segment thirds" : "segment", id: "type-switch" },
         el("button", { type: "button", id: "type-expense", onClick: () => setType("expense") }, "支出"),
-        el("button", { type: "button", id: "type-income", onClick: () => setType("income") }, "收入")),
-      el("div", { class: "amount-block" }, el("p", { class: "eyebrow" }, "金額"), el("p", { id: "amount-display", class: "hero-num is-empty" }, "0"))),
+        el("button", { type: "button", id: "type-income", onClick: () => setType("income") }, "收入"),
+        pfActive() ? el("button", { type: "button", id: "type-advance", onClick: () => setType("advance") }, "代墊") : null),
+      el("div", { class: "amount-block" }, el("p", { class: "eyebrow", id: "amount-label" }, "金額"), el("p", { id: "amount-display", class: "hero-num is-empty" }, "0"))),
     el("p", { class: "eyebrow", id: "frequent-label", hidden: true }, "常用"),
     el("div", { id: "frequent", class: "chips", hidden: true }),
       el("p", { id: "picked", class: "picked" }, "先選分類"),
@@ -2594,6 +2872,20 @@ function renderForm() {
     el("label", { class: "check", id: "reimburse-wrap", hidden: true },
       el("input", { id: "reimburse-input", type: "checkbox", checked: !!form.reimburse, onChange: (event) => { state.form.reimburse = event.target.checked; } }),
       "待報帳（加在 PF Pro 的說明後面）"),
+    pfActive() ? el("div", { id: "advance-box" },
+      el("div", { id: "advance-amount-row" },
+        el("label", { for: "advance-input" }, "幫朋友代墊"),
+        el("input", {
+          id: "advance-input", inputmode: "decimal", placeholder: "空白表示沒有", value: form.advanceStr || "",
+          onInput: (event) => { state.form.advanceStr = event.target.value; paintAdvance(); paintFormError(""); },
+        })),
+      el("label", { for: "friend-input", id: "friend-label" }, "朋友名字"),
+      el("input", {
+        id: "friend-input", maxlength: "40", placeholder: "例如：小明", value: form.friendName || "",
+        onInput: (event) => { state.form.friendName = event.target.value; paintAdvance(); },
+      }),
+      el("p", { id: "advance-hint", class: "muted" }, ""),
+      el("p", { id: "advance-missing", class: "muted" }, "")) : null,
     el("div", { id: "cat-grid", class: "grid4" }),
     el("div", { id: "subs", class: "chips" }),
     el("div", { class: "split" },
@@ -2648,7 +2940,8 @@ function appendAccountOptions(select, accounts, selected) {
 }
 
 function visibleMains(kind) {
-  return mainCats(state.data, kind).filter((cat) => !pfActive() || !PfPro.mainHidden(cat.name));
+  const use = kind === "advance" ? "expense" : kind;
+  return mainCats(state.data, use).filter((cat) => !pfActive() || !PfPro.mainHidden(cat.name));
 }
 
 function visibleSubs(parentId) {
@@ -2696,10 +2989,19 @@ function projectSelect() {
 
 function setType(type) {
   state.form.type = type;
+  const kind = type === "advance" ? "expense" : type;
   const cat = categoryByLevel(state.data, state.form.class1, "1");
-  if (!cat || cat.kind !== type) {
+  if (!cat || cat.kind !== kind) {
     state.form.class1 = "";
     state.form.class2 = "";
+  }
+  if (type === "income") {
+    state.form.advanceStr = "";
+    state.form.friendName = "";
+    const advanceInput = document.getElementById("advance-input");
+    const friendInput = document.getElementById("friend-input");
+    if (advanceInput) advanceInput.value = "";
+    if (friendInput) friendInput.value = "";
   }
   paintType();
   paintAmount();
@@ -2709,7 +3011,7 @@ function setType(type) {
 }
 
 function paintType() {
-  ["expense", "income"].forEach((type) => {
+  ["expense", "income", "advance"].forEach((type) => {
     const button = document.getElementById("type-" + type);
     if (button && state.form) button.setAttribute("aria-pressed", state.form.type === type ? "true" : "false");
   });
@@ -2730,6 +3032,7 @@ function paintAmount() {
   const parts = text.split(".");
   const shown = formatMoney(Number(parts[0] || "0"));
   node.textContent = parts.length > 1 ? shown + "." + parts[1] : shown;
+  paintAdvance();
 }
 
 function pushDigit(key) {
@@ -2752,7 +3055,7 @@ function paintFrequent() {
   const host = document.getElementById("frequent");
   const label = document.getElementById("frequent-label");
   if (!host || !state.form) return;
-  const pairs = frequentPairs(state.data, state.form.type, new Date(), 120).filter((pair) => {
+  const pairs = frequentPairs(state.data, state.form.type === "advance" ? "expense" : state.form.type, new Date(), 120).filter((pair) => {
     if (!pfActive()) return true;
     const picked = pairLabel(state.data, pair[0]);
     const main = categoryByLevel(state.data, picked.class1, "1");
@@ -2795,7 +3098,8 @@ function paintPicked() {
   if (!node || !state.form) return;
   const main = categoryByLevel(state.data, state.form.class1, "1");
   const sub = categoryByLevel(state.data, state.form.class2, "2");
-  node.textContent = main || sub ? [main && main.name, sub && sub.name].filter(Boolean).join(" · ") : "先選分類";
+  if (main || sub) node.textContent = [main && main.name, sub && sub.name].filter(Boolean).join(" · ");
+  else node.textContent = state.form.type === "advance" ? "分類可留空，會寫進代墊說明" : "先選分類";
 }
 
 function paintReimburse() {
@@ -2803,8 +3107,10 @@ function paintReimburse() {
   if (!wrap || !state.form) return;
   const main = categoryByLevel(state.data, state.form.class1, "1");
   const sub = categoryByLevel(state.data, state.form.class2, "2");
-  const decision = main && pfActive() ? PfPro.resolveCategory(main.name, sub && sub.name, state.form.type) : null;
-  const show = !!(decision && decision.ok && decision.category === "工作");
+  const decision = main && pfActive() && state.form.type === "expense" ? PfPro.resolveCategory(main.name, sub && sub.name, "expense") : null;
+  const advance = formAdvanceAmount();
+  const mine = round2(parseAmount(state.form.amountStr) - advance);
+  const show = !!(decision && decision.ok && decision.category === "工作" && mine > 0);
   wrap.hidden = !show;
   if (!show) state.form.reimburse = false;
 }
@@ -2848,6 +3154,58 @@ function selectPair(key) {
   paintSubs();
 }
 
+function friendsAccountNote() {
+  if (!pfActive() || !window.PfPro) return "";
+  if (!(state.pfAccounts || []).length) return "PF Pro 需要已有帳戶 " + PfPro.AR_FRIENDS + "（" + PfPro.AR_FRIENDS_NAME + "）。";
+  if (!PfPro.hasFriendsAccount(state.pfAccounts)) return "帳戶清單裡還沒有 " + PfPro.AR_FRIENDS + "（" + PfPro.AR_FRIENDS_NAME + "）。請先在 PF Pro 建立這個應收帳戶。";
+  return "朋友的份從同一個帳戶轉到 " + PfPro.AR_FRIENDS_NAME + "，不算進自己的支出。";
+}
+
+function formAdvanceAmount() {
+  if (!pfActive() || !state.form || state.form.type === "income") return 0;
+  if (state.form.type === "advance") return parseAmount(state.form.amountStr);
+  return parseAmount(state.form.advanceStr);
+}
+
+function paintAdvance() {
+  const box = document.getElementById("advance-box");
+  const amountRow = document.getElementById("advance-amount-row");
+  const label = document.getElementById("amount-label");
+  const hint = document.getElementById("advance-hint");
+  const missing = document.getElementById("advance-missing");
+  const save = document.getElementById("save-tx");
+  if (!state.form) return;
+  const show = pfActive() && state.form.type !== "income";
+  if (box) box.hidden = !show;
+  if (amountRow) amountRow.hidden = !show || state.form.type === "advance";
+  if (label) {
+    if (state.form.type === "advance") label.textContent = "代墊金額";
+    else if (pfActive() && state.form.type === "expense") label.textContent = "刷卡／付現總額";
+    else label.textContent = "金額";
+  }
+  if (save && !state.form.saving) save.textContent = state.form.type === "advance" ? "記一筆代墊" : (state.form.editing ? "儲存修改" : "記上一筆");
+  if (missing) missing.textContent = show ? friendsAccountNote() : "";
+  if (!hint) return;
+  if (!show) { hint.textContent = ""; return; }
+  const total = parseAmount(state.form.amountStr);
+  const advance = state.form.type === "advance" ? total : parseAmount(state.form.advanceStr);
+  if (state.form.type === "advance") {
+    hint.textContent = "整筆都算朋友的，會轉到應收，不留在週檢視。";
+    return;
+  }
+  if (!(advance > 0)) {
+    hint.textContent = "有幫朋友付時填金額。我的份 = 總額 − 代墊。";
+    return;
+  }
+  if (round2(advance) > total) {
+    hint.textContent = "代墊金額不能大於刷卡或付現的總額。";
+    return;
+  }
+  const mine = round2(total - advance);
+  if (mine === 0) hint.textContent = "整筆都是代墊，不會算進自己的支出。";
+  else hint.textContent = "我的份 " + formatMoney(mine) + " 元，朋友 " + formatMoney(advance) + " 元。";
+}
+
 function paintFormError(message) {
   const node = document.getElementById("form-error");
   if (node) node.textContent = message || "";
@@ -2865,6 +3223,10 @@ function readFormDom() {
   const reimburse = document.getElementById("reimburse-input");
   const reimburseWrap = document.getElementById("reimburse-wrap");
   if (reimburse && reimburseWrap && state.form && !reimburseWrap.hidden) state.form.reimburse = reimburse.checked;
+  const advance = document.getElementById("advance-input");
+  const friend = document.getElementById("friend-input");
+  if (advance && state.form && state.form.type === "expense") state.form.advanceStr = advance.value;
+  if (friend && state.form && state.form.type !== "income") state.form.friendName = friend.value;
 }
 
 function parseAmount(value) {
@@ -2874,8 +3236,12 @@ function parseAmount(value) {
 }
 
 function validateForm() {
-  if (!(parseAmount(state.form.amountStr) > 0)) return "請輸入金額";
+  const total = parseAmount(state.form.amountStr);
+  if (!(total > 0)) return "請輸入金額";
   if (!state.form.date) return "請選擇日期";
+  const advance = formAdvanceAmount();
+  if (pfActive() && round2(advance) > total) return "代墊金額不能大於刷卡或付現的總額";
+  if (pfActive() && advance > 0 && !String(state.form.friendName || "").trim()) return "請填朋友名字";
   if (pfActive()) {
     const accounts = PfPro.payAccounts(state.pfAccounts || []);
     if (!accounts.length) return "請先到設定連上 PF Pro，讀取帳戶";
@@ -2883,13 +3249,17 @@ function validateForm() {
     const chosen = accounts.find((account) => account.id === String(state.form.accountId));
     if (chosen && chosen.currency && chosen.currency !== "TWD") return "PF Pro 快速記帳目前只寫台幣帳戶";
   } else if (!state.form.accountId) return "請選擇帳戶";
-  if (!state.form.class1) return "請選擇分類";
-  const subs = visibleSubs(state.form.class1);
-  if (subs.length && !subs.some((cat) => String(cat.id) === String(state.form.class2))) return "請再選子分類";
-  if (pfActive()) {
+  const mine = round2(total - (advance > 0 ? advance : 0));
+  const wholeFriend = pfActive() && advance > 0 && mine === 0;
+  if (!wholeFriend && !state.form.class1) return "請選擇分類";
+  if (state.form.class1) {
+    const subs = visibleSubs(state.form.class1);
+    if (subs.length && !subs.some((cat) => String(cat.id) === String(state.form.class2))) return "請再選子分類";
+  }
+  if (pfActive() && mine > 0) {
     const main = categoryByLevel(state.data, state.form.class1, "1");
     const sub = categoryByLevel(state.data, state.form.class2, "2");
-    const decision = PfPro.resolveCategory(main && main.name, sub && sub.name, state.form.type);
+    const decision = PfPro.resolveCategory(main && main.name, sub && sub.name, state.form.type === "income" ? "income" : "expense");
     if (!decision.ok) return decision.error;
   }
   return "";
@@ -2939,8 +3309,20 @@ async function saveForm() {
   try {
     if (!state.form.uid) state.form.uid = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const now = PfPro.taipeiStamp(new Date());
+    const draft = {
+      uid: state.form.uid,
+      date: state.form.date,
+      type: state.form.type === "income" ? "income" : "expense",
+      amount: parseAmount(state.form.amountStr),
+      accountId: state.form.accountId,
+      class1: state.form.class1,
+      class2: state.form.class2 || "",
+      memo: state.form.memo || "",
+    };
+    const preview = pfActive() ? previewPfSplit(draft) : null;
+    if (preview && !preview.ok) throw new Error(preview.error);
     let photoFileId = state.form.photoFileId || "";
-    if (state.form.photoData) photoFileId = await storePhoto(state.form, state.form.uid);
+    if (state.form.photoData && !(preview && preview.wholeAdvance)) photoFileId = await storePhoto(state.form, state.form.uid);
     const row = publicTx({
       uid: state.form.uid,
       date: state.form.date,
@@ -2970,11 +3352,15 @@ async function saveForm() {
     focusDay(row.date || localISODate(new Date()));
     state.ledgerKind = row.type === "income" ? "income" : "expense";
     state.query = "";
-    toast(result.queued ? "已記在這台手機，連線後上傳" : (row.createdAt === now && !result.queued ? "已記上一筆" : "已儲存"));
+    const queued = !!result.queued;
+    let message = queued ? "已記在這台手機，連線後上傳" : (row.createdAt === now ? "已記上一筆" : "已儲存");
+    if (result.plan && result.plan.wholeAdvance) message = queued ? "代墊已留在這台手機，連線後寫入" : "已記一筆代墊";
+    else if (result.plan && result.plan.advance > 0) message = queued ? "已記在這台手機，連線後上傳" : "已記上一筆，朋友的份另記代墊";
+    toast(message);
     render();
   } catch (error) {
     state.form.saving = false;
-    if (button) { button.disabled = false; button.textContent = state.form.editing ? "儲存修改" : "記上一筆"; }
+    if (button) { button.disabled = false; button.textContent = state.form.type === "advance" ? "記一筆代墊" : (state.form.editing ? "儲存修改" : "記上一筆"); }
     paintFormError(messageOf(error));
   }
 }
@@ -3057,7 +3443,7 @@ function renderCardPay() {
     if (account.id === draft.toId) option.selected = true;
     to.append(option);
   });
-  const log = loadPayLog();
+  const log = loadPayLog().filter((row) => !row.kind || row.kind === "card");
   const body = el("div", {},
     el("p", { class: "muted" }, "從銀行轉到信用卡。這筆是轉帳，不會算進支出。"),
     el("label", { for: "pay-amount" }, "金額"),
@@ -3127,6 +3513,116 @@ async function saveCardPay() {
   }
 }
 
+function openRepay() {
+  if (!pfActive()) {
+    state.settingsFocus = "pfpro";
+    state.tab = "settings";
+    toast("請先連上 PF Pro");
+    render();
+    return;
+  }
+  const accounts = PfPro.repayAccounts(state.pfAccounts || []);
+  const last = localStorage.getItem("pfLastRepayId") || "";
+  state.repay = {
+    date: state.day || localISODate(new Date()),
+    amount: "",
+    toId: accounts.some((account) => account.id === last) ? last : (accounts[0] ? accounts[0].id : ""),
+    friendName: "",
+    saving: false,
+  };
+  state.overlay = { type: "repay" };
+  render();
+}
+
+function readRepayDom() {
+  if (!state.repay) return;
+  const date = document.getElementById("repay-date");
+  const amount = document.getElementById("repay-amount");
+  const to = document.getElementById("repay-to");
+  const friend = document.getElementById("repay-friend-name");
+  if (date) state.repay.date = date.value;
+  if (amount) state.repay.amount = amount.value;
+  if (to) state.repay.toId = to.value;
+  if (friend) state.repay.friendName = friend.value;
+}
+
+function paintRepayError(message) {
+  const node = document.getElementById("repay-error");
+  if (node) node.textContent = message || "";
+}
+
+function renderRepay() {
+  const draft = state.repay || { date: localISODate(new Date()), amount: "", toId: "", friendName: "" };
+  const accounts = PfPro.repayAccounts(state.pfAccounts || []);
+  const to = el("select", { id: "repay-to", onChange: (event) => { state.repay.toId = event.target.value; } });
+  if (!accounts.length) to.append(el("option", { value: "" }, "沒有現金或銀行帳戶"));
+  accounts.forEach((account) => {
+    const option = el("option", { value: account.id }, account.name + " · " + account.id);
+    if (account.id === draft.toId) option.selected = true;
+    to.append(option);
+  });
+  const log = loadPayLog().filter((row) => row.kind === "repay" || row.kind === "advance");
+  const body = el("div", {},
+    el("p", { class: "muted" }, "朋友把錢還進現金或銀行。這筆從 " + PfPro.AR_FRIENDS_NAME + " 轉出，不算收入。"),
+    friendsAccountNote() ? el("p", { class: "muted" }, friendsAccountNote()) : null,
+    el("label", { for: "repay-amount" }, "金額"),
+    el("input", { id: "repay-amount", inputmode: "decimal", value: draft.amount || "", onInput: (event) => { state.repay.amount = event.target.value; } }),
+    el("label", { for: "repay-date" }, "日期"),
+    el("input", { id: "repay-date", type: "date", value: draft.date || "", onChange: (event) => { state.repay.date = event.target.value; } }),
+    el("label", { for: "repay-to" }, "入帳帳戶"),
+    to,
+    el("label", { for: "repay-friend-name" }, "朋友名字"),
+    el("input", { id: "repay-friend-name", maxlength: "40", value: draft.friendName || "", placeholder: "例如：小明", onInput: (event) => { state.repay.friendName = event.target.value; } }),
+    el("p", { id: "repay-error", class: "bad" }, ""),
+    log.length ? el("div", {}, el("p", { class: "eyebrow" }, "最近的代墊與還錢"), log.slice(0, 6).map((row) => el("div", { class: "kv" },
+      el("span", {}, (row.kind === "repay" ? "還錢 " : "代墊 ") + (row.friendName || "") + " " + (row.date || "")),
+      el("strong", {}, formatMoney(row.amount) + (row.state === "done" ? "" : " · 待上傳"))))) : null);
+  const footer = el("div", { class: "dock" },
+    el("button", { type: "button", class: "primary", id: "save-repay", onClick: go(saveRepay) }, "記一筆朋友還錢"));
+  return sheetFrame("朋友還錢", body, footer);
+}
+
+async function saveRepay() {
+  if (!state.repay || state.repay.saving) return;
+  readRepayDom();
+  const accounts = PfPro.repayAccounts(state.pfAccounts || []);
+  const to = accounts.find((account) => account.id === state.repay.toId);
+  if (!to) { paintRepayError("請選現金或銀行帳戶"); return; }
+  const uid = "repay" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const plan = PfPro.planRepay({
+    uid: uid,
+    date: state.repay.date,
+    amount: parseAmount(state.repay.amount),
+    toId: to.id,
+    toType: to.type,
+    currency: to.currency,
+    friendName: state.repay.friendName,
+  });
+  if (!plan.ok) { paintRepayError(plan.error); return; }
+  state.repay.saving = true;
+  const button = document.getElementById("save-repay");
+  if (button) button.disabled = true;
+  try {
+    await enqueuePfRepay(plan, {
+      date: state.repay.date,
+      amount: parseAmount(state.repay.amount),
+      toName: to.name,
+      friendName: plan.friendName,
+    });
+    localStorage.setItem("pfLastRepayId", to.id);
+    if (navigator.onLine) await flushPfQueue();
+    const queued = state.pending > 0;
+    state.overlay = null;
+    state.repay = null;
+    toast(queued ? "朋友還錢已留在這台手機，連線後寫入" : "已記一筆朋友還錢");
+    render();
+  } catch (error) {
+    if (state.repay) state.repay.saving = false;
+    if (button) button.disabled = false;
+    paintRepayError(messageOf(error));
+  }
+}
+
 function detailRow(label, value) {
   if (!value) return null;
   return el("div", { class: "kv" }, el("span", {}, label), el("strong", {}, value));
@@ -3146,6 +3642,13 @@ function renderDetail(uid) {
     detailRow("帳戶", displayAccountName(tx.accountId)),
     detailRow("專案", (findById(state.data.projects, tx.projectId) || {}).name),
     detailRow("備註", tx.memo),
+    (() => {
+      const meta = pfActive() ? (loadPfMeta()[tx.uid] || {}) : {};
+      if (!(Number(meta.advance) > 0)) return null;
+      return el("div", {},
+        detailRow("幫朋友代墊", (meta.friendName || "") + " " + formatMoney(meta.advance) + " 元"),
+        detailRow("刷卡／付現", formatMoney(round2(Number(tx.amount) + Number(meta.advance))) + " 元"));
+    })(),
     detailRow("發票", tx.invoiceId),
     items.length ? el("div", { class: "items" }, el("p", { class: "eyebrow" }, "電子發票" + (items[0].sellerId ? " · " + items[0].sellerId : "")), items.map((item) => el("div", { class: "kv" }, el("span", {}, item.itemName), el("strong", {}, formatMoney(item.price) + " × " + item.count)))) : (tx.invoiceId ? el("p", { class: "muted" }, "這張發票沒有品項明細。") : null),
     tx.photoFileId ? el("div", {}, el("button", { type: "button", class: "secondary", id: "load-photo", onClick: () => loadPhoto(tx.photoFileId) }, "查看照片"), el("div", { id: "photo-box" })) : null,

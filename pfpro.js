@@ -55,6 +55,8 @@
 
   var BLOCK_NOTE = "薪資、投資不寫入 PF Pro。轉帳不是支出；繳信用卡請用「繳卡費」。";
   var PAY_TYPES = { cash_wallet: 1, credit_card: 1, bank_cash: 1, bank_fx: 1 };
+  var AR_FRIENDS = "ACC-AR-FRIENDS";
+  var AR_FRIENDS_NAME = "朋友代墊（應收）";
 
   function normName(value) {
     return String(value == null ? "" : value).trim().replace(/\s+/g, "").toLowerCase();
@@ -241,6 +243,150 @@
     };
   }
 
+  function cents(value) {
+    return Math.round(roundMoney(value) * 100);
+  }
+
+  function advanceItem(src) {
+    var main = String(src.mainName || "").trim();
+    var sub = String(src.subName || "").trim();
+    var memo = String(src.memo || "").trim().replace(/\s+/g, " ");
+    var cat = main && sub ? main + "›" + sub : main;
+    return [cat, memo].filter(Boolean).join(" ");
+  }
+
+  function friendMemo(friendName, item) {
+    return [String(friendName || "").trim(), String(item || "").trim()].filter(Boolean).join(" ");
+  }
+
+  function planAdvance(input) {
+    var src = input || {};
+    if (!src.uid) return { ok: false, error: "缺少 uid" };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(src.date || "")) return { ok: false, error: "請選擇日期" };
+    if (!src.accountId) return { ok: false, error: "請選擇帳戶" };
+    if (String(src.accountId) === AR_FRIENDS) return { ok: false, error: "代墊要從現金、銀行或信用卡轉出" };
+    if (src.accountType && !PAY_TYPES[src.accountType]) return { ok: false, error: "請選現金、銀行或信用卡" };
+    var currency = src.currency || "TWD";
+    if (currency !== "TWD") return { ok: false, error: "代墊目前只處理台幣" };
+    var amount = roundMoney(src.amount);
+    if (!(amount > 0)) return { ok: false, error: "請輸入代墊金額" };
+    var friend = String(src.friendName || "").trim().replace(/\s+/g, " ");
+    if (!friend) return { ok: false, error: "請填朋友名字" };
+    return {
+      ok: true,
+      leg: "adv",
+      uid: String(src.uid),
+      action: "add_transfer",
+      requestId: "cc-" + src.uid + "-adv",
+      friendName: friend,
+      amount: amount,
+      data: {
+        date: src.date,
+        from: {
+          account_id: String(src.accountId),
+          amount: -amount,
+          currency: "TWD",
+          fx_rate: 1,
+          fx_source: "actual"
+        },
+        to: {
+          account_id: AR_FRIENDS,
+          amount: amount,
+          currency: "TWD",
+          fx_rate: 1,
+          fx_source: "actual"
+        },
+        flow_class: "internal",
+        description: buildDescription("代墊", "", friendMemo(friend, src.item != null ? src.item : advanceItem(src)), false)
+      }
+    };
+  }
+
+  function planRepay(input) {
+    var src = input || {};
+    if (!src.uid) return { ok: false, error: "缺少 uid" };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(src.date || "")) return { ok: false, error: "請選擇日期" };
+    if (!src.toId) return { ok: false, error: "請選入帳的現金或銀行帳戶" };
+    if (String(src.toId) === AR_FRIENDS) return { ok: false, error: "請選入帳的現金或銀行帳戶" };
+    if (src.toType !== "cash_wallet" && src.toType !== "bank_cash" && src.toType !== "bank_fx") return { ok: false, error: "朋友還錢要進現金或銀行，不進信用卡" };
+    var currency = src.currency || "TWD";
+    if (currency !== "TWD") return { ok: false, error: "朋友還錢目前只處理台幣" };
+    var amount = roundMoney(src.amount);
+    if (!(amount > 0)) return { ok: false, error: "請輸入金額" };
+    var friend = String(src.friendName || "").trim().replace(/\s+/g, " ");
+    if (!friend) return { ok: false, error: "請填朋友名字" };
+    return {
+      ok: true,
+      leg: "repay",
+      uid: String(src.uid),
+      action: "add_transfer",
+      requestId: "cc-" + src.uid + "-repay",
+      friendName: friend,
+      amount: amount,
+      data: {
+        date: src.date,
+        from: {
+          account_id: AR_FRIENDS,
+          amount: -amount,
+          currency: "TWD",
+          fx_rate: 1,
+          fx_source: "actual"
+        },
+        to: {
+          account_id: String(src.toId),
+          amount: amount,
+          currency: "TWD",
+          fx_rate: 1,
+          fx_source: "actual"
+        },
+        flow_class: "internal",
+        description: buildDescription("朋友還錢", "", friend, false)
+      }
+    };
+  }
+
+  function planSplit(input) {
+    var src = input || {};
+    var mode = src.mode === "advance" ? "advance" : (src.type === "income" ? "income" : "expense");
+    var total = roundMoney(src.amount);
+    if (!(total > 0)) return { ok: false, error: "請輸入金額" };
+    var advance = mode === "advance" ? total : roundMoney(src.advance || 0);
+    if (cents(advance) < 0) return { ok: false, error: "代墊金額不能是負的" };
+    if (cents(advance) > cents(total)) return { ok: false, error: "代墊金額不能大於刷卡或付現的總額" };
+    var mine = (cents(total) - cents(advance)) / 100;
+    if (cents(mine) + cents(advance) !== cents(total)) return { ok: false, error: "我的份加上朋友的份必須等於刷卡或付現總額" };
+    if (advance > 0 && mode === "income") return { ok: false, error: "代墊只用於支出" };
+    var friend = String(src.friendName || "").trim().replace(/\s+/g, " ");
+    if (advance > 0 && !friend) return { ok: false, error: "請填朋友名字" };
+    var legs = [];
+    if (mine > 0) {
+      var minePlan = planTx(Object.assign({}, src, {
+        type: mode === "income" ? "income" : "expense",
+        amount: mine
+      }));
+      if (!minePlan.ok) return minePlan;
+      minePlan.leg = "exp";
+      if (advance > 0) minePlan.requestId = "cc-" + src.uid + "-exp";
+      legs.push(minePlan);
+    }
+    if (advance > 0) {
+      var adv = planAdvance(Object.assign({}, src, { amount: advance, friendName: friend }));
+      if (!adv.ok) return adv;
+      legs.push(adv);
+    }
+    return {
+      ok: true,
+      total: total,
+      mine: mine,
+      advance: advance,
+      friendName: advance > 0 ? friend : "",
+      wholeAdvance: advance > 0 && mine === 0,
+      localAmount: mine,
+      localType: mode === "income" ? "income" : "expense",
+      legs: legs
+    };
+  }
+
   function normalizeAccounts(list) {
     return (list || []).map(function (row) {
       var id = row && (row.account_id || row.id) ? String(row.account_id || row.id) : "";
@@ -280,6 +426,16 @@
 
   function cardAccounts(list) {
     return payAccounts(list).filter(function (account) { return account.type === "credit_card"; });
+  }
+
+  function repayAccounts(list) {
+    return payAccounts(list).filter(function (account) {
+      return account.type === "cash_wallet" || account.type === "bank_cash" || account.type === "bank_fx";
+    });
+  }
+
+  function hasFriendsAccount(list) {
+    return normalizeAccounts(list).some(function (account) { return account.id === AR_FRIENDS; });
   }
 
   function endpointError(apiUrl, token) {
@@ -441,6 +597,148 @@
     return rest;
   }
 
+  function queueLeg(queue, entry) {
+    var rest = [];
+    var pending = null;
+    (queue || []).forEach(function (op) {
+      var match = false;
+      if (!op) match = false;
+      else if (entry.leg === "adv" || entry.leg === "repay") match = op.uid === entry.uid && op.leg === entry.leg && op.action !== "void_transaction";
+      else match = op.uid === entry.uid && (op.action === "add_transaction" || op.action === "replace_transaction");
+      if (match) pending = op;
+      else rest.push(op);
+    });
+    var local = Object.prototype.hasOwnProperty.call(entry, "local") ? entry.local : (pending && pending.local) || null;
+    if (pending && (pending.action === "add_transaction" || pending.action === "add_transfer")) {
+      rest.push({
+        kind: pending.kind || (pending.action === "add_transfer" ? "pay" : "write"),
+        uid: entry.uid,
+        leg: entry.leg || pending.leg || "",
+        action: pending.action,
+        requestId: pending.requestId,
+        data: entry.data,
+        local: local,
+        voidAfter: !!pending.voidAfter,
+        voidRequestId: pending.voidRequestId || ""
+      });
+      return rest;
+    }
+    if (pending && pending.action === "replace_transaction") {
+      rest.push({
+        kind: "write",
+        uid: entry.uid,
+        leg: entry.leg || pending.leg || "",
+        action: "replace_transaction",
+        requestId: pending.requestId,
+        data: replaceBody(pending.data.txn_id, entry.data),
+        local: local
+      });
+      return rest;
+    }
+    if (entry.replace && entry.txnId && entry.action === "add_transaction") {
+      rest.push({
+        kind: "write",
+        uid: entry.uid,
+        leg: entry.leg || "exp",
+        action: "replace_transaction",
+        requestId: entry.requestId,
+        data: replaceBody(entry.txnId, entry.data),
+        local: local
+      });
+      return rest;
+    }
+    rest.push({
+      kind: entry.action === "add_transfer" ? "pay" : "write",
+      uid: entry.uid,
+      leg: entry.leg || "",
+      action: entry.action,
+      requestId: entry.requestId,
+      data: entry.data,
+      local: local
+    });
+    return rest;
+  }
+
+  function queueTransferEdit(queue, entry) {
+    var pendingAdd = null;
+    (queue || []).forEach(function (op) {
+      if (op && op.uid === entry.uid && op.leg === entry.leg && op.action === "add_transfer") pendingAdd = op;
+    });
+    if (pendingAdd) {
+      return queueLeg(queue, {
+        uid: entry.uid,
+        leg: entry.leg,
+        action: "add_transfer",
+        requestId: pendingAdd.requestId,
+        data: entry.data,
+        local: Object.prototype.hasOwnProperty.call(entry, "local") ? entry.local : pendingAdd.local
+      });
+    }
+    var next = (queue || []).slice();
+    if (entry.txnId) {
+      var hasVoid = next.some(function (op) {
+        return op && op.action === "void_transaction" && op.uid === entry.uid && op.leg === entry.leg;
+      });
+      if (!hasVoid) {
+        next.push({
+          kind: "void",
+          uid: entry.uid,
+          leg: entry.leg,
+          action: "void_transaction",
+          requestId: entry.voidRequestId,
+          data: { txn_id: entry.txnId, void_reason: "CostCode 修改" },
+          local: null
+        });
+      }
+    }
+    return queueLeg(next, {
+      uid: entry.uid,
+      leg: entry.leg,
+      action: "add_transfer",
+      requestId: entry.requestId,
+      data: entry.data,
+      local: entry.local || null
+    });
+  }
+
+  function queueVoidLeg(queue, entry) {
+    var rest = [];
+    var pending = null;
+    (queue || []).forEach(function (op) {
+      if (!op || op.uid !== entry.uid) {
+        rest.push(op);
+        return;
+      }
+      var isTarget = entry.leg === "adv"
+        ? op.leg === "adv" && op.action !== "void_transaction"
+        : (op.action === "add_transaction" || op.action === "replace_transaction");
+      if (isTarget) pending = op;
+      else rest.push(op);
+    });
+    var unsentAdd = pending && (pending.action === "add_transaction" || pending.action === "add_transfer");
+    if (unsentAdd && !entry.txnId) {
+      if (entry.dropUnsent) return rest;
+      pending.voidAfter = true;
+      pending.voidRequestId = entry.voidRequestId || pending.voidRequestId || "";
+      if (entry.local) pending.local = entry.local;
+      rest.push(pending);
+      return rest;
+    }
+    if (!entry.txnId) return rest;
+    var voidId = entry.voidRequestId;
+    if (rest.some(function (op) { return op && op.requestId === voidId; })) return rest;
+    rest.push({
+      kind: "void",
+      uid: entry.uid,
+      leg: entry.leg || "",
+      action: "void_transaction",
+      requestId: voidId,
+      data: { txn_id: entry.txnId, void_reason: entry.reason || "CostCode 刪除" },
+      local: entry.local || null
+    });
+    return rest;
+  }
+
   function revOf(requestId) {
     var match = /-r(\d+)$/.exec(String(requestId || ""));
     return match ? Number(match[1]) : 0;
@@ -563,6 +861,78 @@
     check("txn id", txnIdFromResponse({ ok: true, replay: true, result_ref: "TX-1,TX-2" }) === "TX-1" && txnIdFromResponse({ ok: true, result: { ids: ["TX-9"] } }) === "TX-9");
     check("版本修訂號", revOf("cc-u1-r3") === 3 && revOf("cc-u1") === 0);
 
+    var splitInput = {
+      uid: "u",
+      date: "2026-10-20",
+      type: "expense",
+      amount: 100,
+      advance: 40,
+      accountId: "ACC-CC-1",
+      accountType: "credit_card",
+      currency: "TWD",
+      mainName: "餐費",
+      subName: "午餐",
+      memo: "牛肉麵",
+      friendName: "小明"
+    };
+    var split = planSplit(splitInput);
+    var expLeg = split.ok && split.legs.filter(function (leg) { return leg.leg === "exp"; })[0];
+    var advLeg = split.ok && split.legs.filter(function (leg) { return leg.leg === "adv"; })[0];
+    check("代墊拆帳", split.ok && split.mine === 60 && split.advance === 40 && split.mine + split.advance === split.total && expLeg && advLeg && expLeg.requestId === "cc-u-exp" && expLeg.data.amount === -60 && expLeg.data.account_id === "ACC-CC-1" && advLeg.requestId === "cc-u-adv" && advLeg.action === "add_transfer" && advLeg.data.from.account_id === "ACC-CC-1" && advLeg.data.from.amount === -40 && advLeg.data.to.account_id === AR_FRIENDS && advLeg.data.to.amount === 40 && advLeg.data.from.amount + advLeg.data.to.amount === 0 && advLeg.data.flow_class === "internal" && advLeg.data.description.indexOf("小明") >= 0 && advLeg.data.description.indexOf("午餐") >= 0 && advLeg.data.description.indexOf("牛肉麵") >= 0, JSON.stringify(split));
+    check("代墊超過總額", !planSplit(Object.assign({}, splitInput, { advance: 150 })).ok);
+    check("代墊沒有名字", !planSplit(Object.assign({}, splitInput, { friendName: "  " })).ok);
+    var whole = planSplit(Object.assign({}, splitInput, { advance: 100 }));
+    check("整筆代墊", whole.ok && whole.wholeAdvance && whole.legs.length === 1 && whole.legs[0].leg === "adv" && whole.legs[0].requestId === "cc-u-adv" && whole.localAmount === 0 && whole.legs[0].data.from.amount === -100);
+    var standalone = planSplit(Object.assign({}, splitInput, { mode: "advance", amount: 80, advance: 0, mainName: "", subName: "", memo: "電影票" }));
+    check("代墊類型", standalone.ok && standalone.wholeAdvance && standalone.legs.length === 1 && standalone.legs[0].requestId === "cc-u-adv" && standalone.legs[0].data.description.indexOf("小明") >= 0 && standalone.legs[0].data.description.indexOf("電影票") >= 0 && standalone.mine + standalone.advance === 80);
+    var plainSplit = planSplit(Object.assign({}, splitInput, { uid: "u1", advance: 0, friendName: "" }));
+    check("沒有代墊沿用原 request_id", plainSplit.ok && plainSplit.legs.length === 1 && plainSplit.legs[0].requestId === "cc-u1" && plainSplit.legs[0].data.amount === -100);
+    var odd = planSplit(Object.assign({}, splitInput, { amount: 10.1, advance: 0.2 }));
+    check("代墊金額加總", odd.ok && odd.mine === 9.9 && odd.advance === 0.2 && odd.mine + odd.advance === 10.1 && odd.legs[0].data.amount === -9.9 && odd.legs[1].data.from.amount === -0.2);
+    var repay = planRepay({ uid: "r1", date: "2026-10-20", amount: 40, toId: "ACC-FUBON-TWD", toType: "bank_cash", friendName: "小明" });
+    check("朋友還錢", repay.ok && repay.action === "add_transfer" && repay.requestId === "cc-r1-repay" && repay.data.from.account_id === AR_FRIENDS && repay.data.from.amount === -40 && repay.data.to.account_id === "ACC-FUBON-TWD" && repay.data.to.amount === 40 && repay.data.from.amount + repay.data.to.amount === 0 && repay.data.description.indexOf("小明") >= 0, repay.error || "");
+    check("朋友還錢不進信用卡", !planRepay({ uid: "r2", date: "2026-10-20", amount: 10, toId: "ACC-CC-1", toType: "credit_card", friendName: "小明" }).ok);
+    check("朋友還錢要有名字", !planRepay({ uid: "r3", date: "2026-10-20", amount: 10, toId: "ACC-CASH-TWD", toType: "cash_wallet", friendName: "" }).ok);
+
+    function asQueueLeg(leg) {
+      return { uid: "u", leg: leg.leg, action: leg.action, requestId: leg.requestId, data: leg.data, local: leg.leg === "exp" ? { op: "upsertTx" } : null };
+    }
+    var queuedSplit = [];
+    split.legs.forEach(function (leg) { queuedSplit = queueLeg(queuedSplit, asQueueLeg(leg)); });
+    var editedSplit = planSplit(Object.assign({}, splitInput, { advance: 25 }));
+    editedSplit.legs.forEach(function (leg) { queuedSplit = queueLeg(queuedSplit, asQueueLeg(leg)); });
+    var queuedExp = queuedSplit.filter(function (op) { return op.action === "add_transaction"; })[0];
+    var queuedAdv = queuedSplit.filter(function (op) { return op.leg === "adv" && op.action === "add_transfer"; })[0];
+    check("代墊離線改金額", queuedSplit.length === 2 && queuedExp && queuedAdv && queuedExp.requestId === "cc-u-exp" && queuedExp.data.amount === -75 && queuedAdv.requestId === "cc-u-adv" && queuedAdv.data.from.amount === -25 && queuedAdv.data.to.amount === 25, JSON.stringify(queuedSplit.map(function (op) { return op.requestId + ":" + op.action; })));
+    var keptPlain = queueLeg([], { uid: "u", leg: "exp", action: "add_transaction", requestId: "cc-u", data: food.data, local: { op: "upsertTx" } });
+    split.legs.forEach(function (leg) { keptPlain = queueLeg(keptPlain, asQueueLeg(leg)); });
+    var keptExp = keptPlain.filter(function (op) { return op.action === "add_transaction" || op.action === "replace_transaction"; });
+    check("未送出的支出改代墊不另開 request_id", keptExp.length === 1 && keptExp[0].requestId === "cc-u" && keptExp[0].data.amount === -60 && keptPlain.some(function (op) { return op.requestId === "cc-u-adv"; }));
+    var revised = queueTransferEdit([], {
+      uid: "u",
+      leg: "adv",
+      txnId: "TXA",
+      voidRequestId: "cc-u-adv-void",
+      requestId: "cc-u-adv-r1",
+      data: advLeg.data
+    });
+    var revisedAgain = queueTransferEdit(revised, {
+      uid: "u",
+      leg: "adv",
+      txnId: "TXA",
+      voidRequestId: "cc-u-adv-void",
+      requestId: "cc-u-adv-r2",
+      data: Object.assign({}, advLeg.data, { description: advLeg.data.description + " 改" })
+    });
+    var revisedAdd = revisedAgain.filter(function (op) { return op.action === "add_transfer"; })[0];
+    var revisedVoid = revisedAgain.filter(function (op) { return op.action === "void_transaction"; })[0];
+    check("已入帳代墊先作廢再重送", revisedAgain.length === 2 && revisedVoid && revisedVoid.requestId === "cc-u-adv-void" && revisedVoid.data.txn_id === "TXA" && revisedAdd && revisedAdd.requestId === "cc-u-adv-r1" && revisedAdd.data.description.indexOf("改") >= 0);
+    var dropped = queueVoidLeg(queuedSplit, { uid: "u", leg: "adv", txnId: "", voidRequestId: "cc-u-adv-void", dropUnsent: true });
+    check("拿掉未送出的代墊", dropped.length === 1 && dropped[0].requestId === "cc-u-exp" && !dropped.some(function (op) { return op.leg === "adv"; }));
+    var voidKnownAdv = queueVoidLeg([], { uid: "u", leg: "adv", txnId: "TXA", voidRequestId: "cc-u-adv-void" });
+    check("已入帳代墊刪除", voidKnownAdv.length === 1 && voidKnownAdv[0].action === "void_transaction" && voidKnownAdv[0].requestId === "cc-u-adv-void" && voidKnownAdv[0].data.txn_id === "TXA");
+    check("應收帳戶", AR_FRIENDS === "ACC-AR-FRIENDS" && AR_FRIENDS_NAME === "朋友代墊（應收）" && hasFriendsAccount([{ account_id: AR_FRIENDS, name: AR_FRIENDS_NAME, type: "asset", currency: "TWD", status: "active" }]) && !payAccounts([{ account_id: AR_FRIENDS, name: AR_FRIENDS_NAME, type: "asset", currency: "TWD", status: "active" }]).length);
+
     return { ok: cases.every(function (item) { return item.ok; }), cases: cases };
   }
 
@@ -570,17 +940,24 @@
     PF_CATEGORIES: PF_CATEGORIES,
     PF_MAP: PF_MAP,
     BLOCK_NOTE: BLOCK_NOTE,
+    AR_FRIENDS: AR_FRIENDS,
+    AR_FRIENDS_NAME: AR_FRIENDS_NAME,
     resolveCategory: resolveCategory,
     mainHidden: mainHidden,
     subHidden: subHidden,
     planTx: planTx,
     planTransfer: planTransfer,
+    planAdvance: planAdvance,
+    planRepay: planRepay,
+    planSplit: planSplit,
     buildDescription: buildDescription,
     normalizeAccounts: normalizeAccounts,
     isPayAccount: isPayAccount,
     payAccounts: payAccounts,
     bankAccounts: bankAccounts,
     cardAccounts: cardAccounts,
+    repayAccounts: repayAccounts,
+    hasFriendsAccount: hasFriendsAccount,
     endpointError: endpointError,
     withPostQuery: withPostQuery,
     shouldRetryPost: shouldRetryPost,
@@ -589,6 +966,9 @@
     queueWrite: queueWrite,
     queueVoid: queueVoid,
     queueTransfer: queueTransfer,
+    queueLeg: queueLeg,
+    queueTransferEdit: queueTransferEdit,
+    queueVoidLeg: queueVoidLeg,
     revOf: revOf,
     taipeiStamp: taipeiStamp,
     selfCheck: selfCheck
