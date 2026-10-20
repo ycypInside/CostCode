@@ -89,7 +89,7 @@
   .unit { font-family: var(--font); font-size: 16px; margin-left: 6px; color: var(--muted); font-weight: 500; }
   .subline, .muted { color: var(--muted); }
   .bad { color: var(--danger); }
-  #form-error:empty, #api-error:empty, #project-error:empty { display: none; }
+  #form-error:empty, #api-error:empty, #project-error:empty, #pf-error:empty, #pay-error:empty { display: none; }
   .search input { width: 100%; margin-bottom: 8px; }
   input[type="date"]::-webkit-datetime-edit { color: var(--ink); }
   input:not([type="checkbox"]):not([type="file"]), select, textarea {
@@ -329,9 +329,10 @@
 </div>
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
+<script src="pfpro.js?v=20261020-1715"></script>
 <script>
-const APP_VERSION = "20261012-1147";
-const REQUIRES_BACKEND = "20261009-1415";
+const APP_VERSION = "20261020-1715";
+const REQUIRES_BACKEND = "20261020-1715";
 
 /*__PURE_START__*/
 var TX_HEADERS = ["uid", "date", "type", "amount", "accountId", "class1", "class2", "projectId", "memo", "invoiceId", "photoFileId", "createdAt", "modifiedAt"];
@@ -1087,6 +1088,10 @@ const state = {
   loadError: "",
   overlay: null,
   form: null,
+  cardPay: null,
+  pfAccounts: [],
+  settingsFocus: "",
+  sheetPending: 0,
   booting: true,
   statsKind: "expense",
   ledgerKind: "expense",
@@ -1167,6 +1172,7 @@ function messageOf(error) {
 }
 
 function footerText() {
+  if (state.mode === "pfpro") return "前端 v" + APP_VERSION + " · PF Pro";
   const status = state.mode === "cloud" ? versionStatus(state.backendVersion, REQUIRES_BACKEND) : "local";
   const backend = state.backendVersion ? "v" + state.backendVersion : (state.mode === "cloud" ? "未回報" : "未連線");
   const mark = state.mode === "cloud" && status !== "ok" ? " ⚠️" : "";
@@ -1215,7 +1221,7 @@ function renderChrome() {
   }
   const flags = el("div", { class: "flags" });
   if (state.syncing) flags.append(el("span", {}, "同步中"));
-  if (state.mode === "cloud" && !state.online) flags.append(el("span", {}, "離線"));
+  if ((state.mode === "cloud" || state.mode === "pfpro") && !state.online) flags.append(el("span", {}, "離線"));
   if (state.pending) flags.append(el("span", {}, state.pending + " 筆待上傳"));
   if (flags.childNodes.length) bar.append(flags);
   document.documentElement.style.setProperty("--topbar-h", bar.offsetHeight + "px");
@@ -1234,13 +1240,14 @@ function renderChrome() {
 function renderBanners() {
   const box = el("div", {});
   if (state.mode === "cloud" && !state.online) box.append(el("div", { class: "banner" }, "沒有網路。新的增刪改會先留在這台手機，連線後再上傳。"));
+  if (state.mode === "pfpro" && !state.online) box.append(el("div", { class: "banner" }, "沒有網路。新的帳會先留在這台手機，連線後用同一個 request_id 寫入 PF Pro。"));
   if (state.pending) {
     box.append(el("div", { class: "banner" }, state.pending + " 筆還沒上傳。",
-      el("button", { type: "button", onClick: go(refreshCloud) }, "立即上傳")));
+      el("button", { type: "button", onClick: go(syncNow) }, "立即上傳")));
   }
   if (state.loadError) {
     box.append(el("div", { class: "banner bad" }, state.loadError,
-      state.mode === "cloud" ? el("button", { type: "button", onClick: go(refreshCloud) }, "重試") : null));
+      state.mode === "cloud" || state.mode === "pfpro" ? el("button", { type: "button", onClick: go(syncNow) }, "重試") : null));
   }
   if (String(state.data.settings.demo) === "1" && state.mode === "local") box.append(el("div", { class: "banner" }, "這是範例帳，只存在這台手機。"));
   return box;
@@ -1251,6 +1258,7 @@ function overlayKey() {
   if (state.overlay.type === "form") return "form:" + ((state.form && state.form.uid) || "new");
   if (state.overlay.type === "detail") return "detail:" + state.overlay.uid;
   if (state.overlay.type === "new-project") return "new-project";
+  if (state.overlay.type === "cardpay") return "cardpay";
   return "project:" + state.overlay.id;
 }
 
@@ -1265,6 +1273,7 @@ function render() {
     const typing = sameSheet && active && sheet.contains(active);
     if (!typing) {
       if (state.form) readFormDom();
+      if (state.cardPay) readCardPayDom();
       renderSheet();
       paintedOverlay = key;
     } else sheet.hidden = false;
@@ -1278,7 +1287,7 @@ function render() {
     paintLedger();
     return;
   }
-  if (typing && (active.id === "budget-input" || active.id === "api-url" || active.id === "api-token")) return;
+  if (typing && (active.id === "budget-input" || active.id === "api-url" || active.id === "api-token" || active.id === "pf-url" || active.id === "pf-token")) return;
   renderView();
 }
 
@@ -1306,6 +1315,10 @@ function renderWelcome() {
     el("button", { type: "button", class: "primary", id: "use-local", onClick: go(useLocal) }, "先在這台手機試用"),
     el("p", { class: "or" }, "或是連上已經部署好的試算表"),
     renderApiForm(),
+    el("details", { class: "more" },
+      el("summary", {}, "改用 PF Pro"),
+      el("p", { class: "muted" }, "手機快速記帳會寫進 PF Pro。網址和 API key 只留在這台瀏覽器。"),
+      renderPfForm()),
     el("p", { class: "muted", id: "welcome-ver" }, ""));
 }
 
@@ -1327,6 +1340,9 @@ function renderApiForm() {
 
 function renderLedgerShell() {
   return el("div", {},
+    state.mode === "pfpro" ? el("div", { class: "card" },
+      el("p", { class: "muted" }, "週檢視是這台手機記下來的帳。新的支出會另寫進 PF Pro，不會把舊帳整批補傳。"),
+      el("button", { type: "button", class: "secondary", id: "pay-card", onClick: openCardPay }, "繳卡費")) : null,
     el("div", { id: "weekbar", class: "weekbar" }),
     el("div", { id: "summary" }),
     el("div", { class: "chips", id: "kind-filter" }, ["expense", "income"].map((kind) => {
@@ -1593,19 +1609,52 @@ function renderProjects() {
     }));
 }
 
+function setupKind() {
+  if (state.settingsFocus === "sheet" || state.settingsFocus === "pfpro") return state.settingsFocus;
+  return state.mode === "pfpro" ? "pfpro" : "sheet";
+}
+
+function renderWriteModeCard() {
+  const kind = setupKind();
+  let blurb = "目前只存在這台手機。選一種連線後，之後新的帳會寫到那裡。";
+  if (state.mode === "pfpro") blurb = "現在新的帳會寫進 PF Pro，並留一份在這台手機。";
+  else if (state.mode === "cloud") blurb = "現在新的帳會寫進 Google 試算表。";
+  return el("section", { class: "card" },
+    el("h2", {}, "寫入模式"),
+    el("p", { class: "muted" }, blurb),
+    el("div", { class: "chips" },
+      el("button", {
+        type: "button", class: "chip", "aria-pressed": kind === "sheet" ? "true" : "false",
+        onClick: () => { state.settingsFocus = "sheet"; render(); },
+      }, "試算表"),
+      el("button", {
+        type: "button", class: "chip", "aria-pressed": kind === "pfpro" ? "true" : "false",
+        onClick: () => { state.settingsFocus = "pfpro"; render(); },
+      }, "PF Pro")));
+}
+
 function renderSettings() {
+  const kind = setupKind();
   return el("div", {},
-    el("section", { class: "card" },
-      el("h2", {}, "連線"),
-      el("p", { class: "muted" }, state.mode === "cloud" ? "現在顯示的是 Google 試算表裡的帳。" : "目前是本機試用，資料只在這台手機。"),
+    renderWriteModeCard(),
+    kind === "pfpro" ? renderPfCard() : el("section", { class: "card" },
+      el("h2", {}, "試算表連線"),
+      el("p", { class: "muted" }, state.mode === "cloud" ? "現在顯示並寫入 Google 試算表。" : "填好網址與 TOKEN 後會改走試算表。"),
       renderApiForm()),
     renderVersionCard(),
     renderImportCard(),
     renderDeviceCard(),
-    renderAccounts());
+    state.mode === "pfpro" ? renderPfAccounts() : renderAccounts());
 }
 
 function renderVersionCard() {
+  if (state.mode === "pfpro") {
+    return el("section", { class: "card" },
+      el("h2", {}, "版本資訊"),
+      el("p", {}, "前端 v" + APP_VERSION),
+      el("p", {}, "這時新的帳寫入 PF Pro，試算表後端不會被呼叫。"),
+      el("p", {}, el("a", { href: "pfpro-check.html" }, "打開對照自檢")));
+  }
   const status = state.mode === "cloud" ? versionStatus(state.backendVersion, REQUIRES_BACKEND) : "missing";
   let line = "⚠️ 尚未連上後端";
   if (state.mode === "cloud" && status === "missing") line = "⚠️ 後端沒有回報版本，可能是舊的 Code.gs。";
@@ -1626,7 +1675,7 @@ function renderImportCard() {
     if (file) onPickFile(file);
   } },
     el("h2", {}, "匯入 CostDiary 備份"),
-    el("p", { class: "muted" }, "在這台瀏覽器解開 .cddb，一次上傳 500 筆。備份檔不會另外傳走。"),
+    el("p", { class: "muted" }, "在這台瀏覽器解開 .cddb，一次上傳 500 筆。備份檔不會另外傳走。已存在的 uid 會略過。清空整張試算表已停用。"),
     el("label", { class: "file" },
       el("input", { id: "cddb-file", type: "file", accept: ".cddb,.zip,application/zip,application/octet-stream", onChange: (event) => {
         const file = event.target.files && event.target.files[0];
@@ -1634,19 +1683,17 @@ function renderImportCard() {
         event.target.value = "";
       } }),
       "選擇 .cddb 檔"),
-    el("label", { class: "check", id: "clear-wrap", hidden: state.mode !== "cloud" },
-      el("input", { id: "clear-first", type: "checkbox" }),
-      "上傳前清空線上帳（每月預算會留下）"),
     el("div", { id: "import-status" }));
 }
 
 function renderDeviceCard() {
   return el("section", { class: "card" },
     el("h2", {}, "這台手機"),
-    el("p", { class: "muted" }, state.mode === "cloud" ? "離線時會先把變更留在手機，連線後補傳。" : "本機試用的資料不會自動上傳。"),
-    state.mode === "cloud" ? el("button", { type: "button", class: "secondary", id: "sync-now", onClick: go(refreshCloud) }, "立即同步") : null,
+    el("p", { class: "muted" }, state.mode === "pfpro" ? "離線時會先把變更留在手機，連線後用同一個 request_id 寫入 PF Pro。" : (state.mode === "cloud" ? "離線時會先把變更留在手機，連線後補傳。" : "本機試用的資料不會自動上傳。")),
+    state.mode === "cloud" || state.mode === "pfpro" ? el("button", { type: "button", class: "secondary", id: "sync-now", onClick: go(syncNow) }, "立即同步") : null,
     state.mode === "local" ? el("button", { type: "button", class: "secondary", id: "load-demo", onClick: go(loadDemo) }, "載入範例帳") : null,
     state.mode === "cloud" ? el("button", { type: "button", class: "textish", id: "disconnect", onClick: disconnect }, "中斷連線") : null,
+    state.mode === "pfpro" ? el("button", { type: "button", class: "textish", id: "disconnect-pf", onClick: disconnectPf }, "中斷 PF Pro") : null,
     el("button", { type: "button", class: "danger", id: "clear-local", onClick: go(clearLocal) }, state.mode === "cloud" ? "清掉手機上的複本" : "清空這台手機的帳"));
 }
 
@@ -1719,6 +1766,24 @@ async function enqueue(op) {
 }
 
 async function commit(op) {
+  if (state.mode === "pfpro" && op.op === "upsertTx") {
+    const preview = previewPfTx(op.row, !!(state.form && state.form.reimburse));
+    if (!preview.ok) throw new Error(preview.error);
+    applyOp(state.data, op);
+    await enqueuePfTx(op.row, !!(state.form && state.form.reimburse));
+    await saveSnapshot();
+    if (!navigator.onLine) return { queued: true };
+    await flushPfQueue();
+    return { queued: state.pending > 0 };
+  }
+  if (state.mode === "pfpro" && op.op === "deleteTx") {
+    applyOp(state.data, op);
+    await enqueuePfDelete(String(op.uid));
+    await saveSnapshot();
+    if (!navigator.onLine) return { queued: true };
+    await flushPfQueue();
+    return { queued: state.pending > 0 };
+  }
   applyOp(state.data, op);
   if (state.mode !== "cloud") {
     await saveSnapshot();
@@ -1799,6 +1864,410 @@ async function api(action, extra, timeoutMs, creds) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function pfActive() {
+  return state.mode === "pfpro";
+}
+
+function pfCreds(override) {
+  if (override && override.url) return { url: String(override.url).trim(), token: override.token || "" };
+  return {
+    url: (localStorage.getItem("pfApiUrl") || "").trim(),
+    token: localStorage.getItem("pfApiToken") || "",
+  };
+}
+
+function loadPfAccountCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("pfAccounts") || "[]");
+    return Array.isArray(parsed) && window.PfPro ? PfPro.normalizeAccounts(parsed) : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function loadPfMeta() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("pfMeta") || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function savePfMeta(meta) {
+  localStorage.setItem("pfMeta", JSON.stringify(meta || {}));
+}
+
+function rememberPfTxn(uid, txnId, requestId, reimburse) {
+  const meta = loadPfMeta();
+  const prev = meta[uid] || {};
+  meta[uid] = {
+    txnId: txnId || prev.txnId || "",
+    requestId: requestId || prev.requestId || "",
+    rev: Math.max(prev.rev || 0, PfPro.revOf(requestId)),
+    reimburse: reimburse == null ? !!prev.reimburse : !!reimburse,
+  };
+  savePfMeta(meta);
+}
+
+function forgetPfTxn(uid) {
+  const meta = loadPfMeta();
+  delete meta[uid];
+  savePfMeta(meta);
+}
+
+function loadPayLog() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("pfPayLog") || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function savePayLog(rows) {
+  localStorage.setItem("pfPayLog", JSON.stringify((rows || []).slice(0, 12)));
+}
+
+let pfLock = Promise.resolve();
+function withPfLock(fn) {
+  const prev = pfLock;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  pfLock = prev.then(() => gate);
+  return prev.then(() => fn()).finally(() => release());
+}
+
+function previewPfTx(row, reimburse) {
+  const main = categoryByLevel(state.data, row.class1, "1");
+  const sub = categoryByLevel(state.data, row.class2, "2");
+  const account = (state.pfAccounts || []).find((item) => item.id === String(row.accountId));
+  return PfPro.planTx({
+    uid: row.uid,
+    date: row.date,
+    type: row.type,
+    amount: row.amount,
+    accountId: row.accountId,
+    currency: account && account.currency ? account.currency : "TWD",
+    mainName: main && main.name,
+    subName: sub && sub.name,
+    memo: row.memo,
+    reimburse: !!reimburse,
+  });
+}
+
+async function readPfQueue() {
+  return (await kvGet("pfQueue")) || [];
+}
+
+async function enqueuePfTx(row, reimburse) {
+  const plan = previewPfTx(row, reimburse);
+  if (!plan.ok) throw new Error(plan.error);
+  const meta = loadPfMeta()[row.uid] || {};
+  const rev = (meta.rev || 0) + 1;
+  const requestId = meta.txnId ? ("cc-" + row.uid + "-r" + rev) : plan.requestId;
+  await withPfLock(async () => {
+    const queue = await readPfQueue();
+    const next = PfPro.queueWrite(queue, {
+      uid: row.uid,
+      requestId: requestId,
+      data: plan.data,
+      replace: !!meta.txnId,
+      txnId: meta.txnId || "",
+      local: { op: "upsertTx", row: row },
+    });
+    const op = next.filter((item) => item.uid === row.uid).pop();
+    rememberPfTxn(row.uid, meta.txnId || "", op.requestId, !!reimburse);
+    await kvSet("pfQueue", next);
+    state.pending = next.length;
+  });
+}
+
+async function enqueuePfDelete(uid) {
+  const meta = loadPfMeta()[uid] || {};
+  await withPfLock(async () => {
+    const queue = await readPfQueue();
+    const next = PfPro.queueVoid(queue, { uid: uid, txnId: meta.txnId || "" });
+    await kvSet("pfQueue", next);
+    state.pending = next.length;
+  });
+}
+
+async function enqueuePfTransfer(plan, note) {
+  const uid = String(plan.requestId || "").replace(/^cc-/, "");
+  await withPfLock(async () => {
+    const queue = await readPfQueue();
+    const next = PfPro.queueTransfer(queue, {
+      uid: uid,
+      requestId: plan.requestId,
+      data: plan.data,
+    });
+    await kvSet("pfQueue", next);
+    state.pending = next.length;
+    const log = loadPayLog();
+    log.unshift({
+      requestId: plan.requestId,
+      state: "queued",
+      date: note.date,
+      amount: note.amount,
+      fromName: note.fromName,
+      toName: note.toName,
+    });
+    savePayLog(log);
+  });
+}
+
+async function pfGet(q, creds) {
+  const auth = pfCreds(creds);
+  const problem = PfPro.endpointError(auth.url, auth.token);
+  if (problem) throw new Error(problem);
+  const url = new URL(auth.url);
+  url.searchParams.set("q", q);
+  url.searchParams.set("token", auth.token);
+  let response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      redirect: "follow",
+      referrerPolicy: "no-referrer",
+      cache: "no-store",
+      credentials: "omit",
+    });
+  } catch (error) {
+    throw new Error("連不上 PF Pro");
+  }
+  const text = await response.text();
+  let data;
+  try { data = JSON.parse(text); }
+  catch (error) { throw new Error("PF Pro 回傳的不是 JSON"); }
+  if (!data.ok) throw new Error(PfPro.explainError(data.error, data.reason));
+  return data;
+}
+
+async function pfPostOnce(endpoint, body) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      redirect: "follow",
+      referrerPolicy: "no-referrer",
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "Content-Type": "text/plain" },
+      body: body,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    try { return JSON.parse(text); }
+    catch (error) { return { ok: false, error: "bad json", reason: "parse_error" }; }
+  } catch (error) {
+    if (error.name === "AbortError") return { ok: false, error: "連線逾時，請再試一次" };
+    return { ok: false, error: "server" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function pfPost(action, data, requestId, creds) {
+  const auth = pfCreds(creds);
+  const problem = PfPro.endpointError(auth.url, auth.token);
+  if (problem) throw new Error(problem);
+  const endpoint = PfPro.withPostQuery(auth.url, auth.token);
+  const body = JSON.stringify({
+    token: auth.token,
+    request_id: requestId,
+    action: action,
+    client: "costcode",
+    data: data,
+  });
+  let last = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise((resolve) => setTimeout(resolve, attempt === 1 ? 300 : 800));
+    last = await pfPostOnce(endpoint, body);
+    if (!PfPro.shouldRetryPost(last, attempt)) break;
+  }
+  if (!last || !last.ok) throw new Error(PfPro.explainError(last && last.error, last && last.reason));
+  return last;
+}
+
+async function flushPfQueue() {
+  return withPfLock(async () => {
+    const queue = await readPfQueue();
+    if (!queue.length) { state.pending = 0; return; }
+    if (!navigator.onLine) { state.pending = queue.length; return; }
+    const remain = [];
+    for (let i = 0; i < queue.length; i++) {
+      let op = queue[i];
+      try {
+        const res = await pfPost(op.action, op.data, op.requestId);
+        const txnId = PfPro.txnIdFromResponse(res);
+        if ((op.action === "add_transaction" || op.action === "replace_transaction") && txnId) {
+          rememberPfTxn(op.uid, txnId, op.requestId);
+        }
+        if (op.voidAfter) {
+          if (!txnId) throw new Error("PF Pro 沒有回傳交易編號，暫時無法刪除遠端那一筆");
+          await pfPost("void_transaction", { txn_id: txnId, void_reason: "CostCode 刪除" }, "cc-" + op.uid + "-void");
+          forgetPfTxn(op.uid);
+        } else if (op.action === "void_transaction") {
+          forgetPfTxn(op.uid);
+        } else if (op.action === "add_transfer") {
+          savePayLog(loadPayLog().map((row) => row.requestId === op.requestId ? Object.assign({}, row, { state: "done" }) : row));
+        }
+      } catch (error) {
+        if (op.voidAfter) {
+          const known = (loadPfMeta()[op.uid] || {}).txnId;
+          if (known) {
+            op = {
+              kind: "void",
+              uid: op.uid,
+              action: "void_transaction",
+              requestId: "cc-" + op.uid + "-void",
+              data: { txn_id: known, void_reason: "CostCode 刪除" },
+              local: { op: "deleteTx", uid: op.uid },
+            };
+          }
+        }
+        remain.push(op);
+        for (let j = i + 1; j < queue.length; j++) remain.push(queue[j]);
+        state.loadError = "有變更還沒寫入 PF Pro：" + messageOf(error);
+        break;
+      }
+    }
+    await kvSet("pfQueue", remain);
+    state.pending = remain.length;
+    if (!remain.length) state.loadError = "";
+  });
+}
+
+function syncNow() {
+  if (state.mode === "pfpro") return refreshPf();
+  return refreshCloud();
+}
+
+async function refreshPf() {
+  if (state.mode !== "pfpro") return;
+  state.syncing = true;
+  renderChrome();
+  try {
+    await flushPfQueue();
+    if (navigator.onLine) {
+      const data = await pfGet("accounts");
+      state.pfAccounts = PfPro.normalizeAccounts(data.accounts);
+      localStorage.setItem("pfAccounts", JSON.stringify(state.pfAccounts));
+    }
+    if (!state.pending) state.loadError = "";
+  } catch (error) {
+    state.loadError = messageOf(error);
+  } finally {
+    state.syncing = false;
+    render();
+  }
+}
+
+function renderPfForm() {
+  const creds = pfCreds();
+  return el("form", { id: "pf-form", onSubmit: (event) => { event.preventDefault(); connectPfFromForm(); } },
+    el("label", { for: "pf-url" }, "PF Pro /exec 網址"),
+    el("input", { id: "pf-url", type: "url", placeholder: "https://script.google.com/macros/s/…/exec", value: creds.url, autocomplete: "off", spellcheck: "false" }),
+    el("label", { for: "pf-token" }, "API key"),
+    el("div", { class: "tokenline" },
+      el("input", { id: "pf-token", type: "password", value: creds.token, autocomplete: "off", spellcheck: "false" }),
+      el("button", { type: "button", class: "textish", onClick: () => {
+        const input = document.getElementById("pf-token");
+        if (input) input.type = input.type === "password" ? "text" : "password";
+      } }, "顯示")),
+    el("p", { class: "muted" }, "貼上 PF Pro 網頁應用程式網址，以及指令碼屬性裡的 API key。兩者只存在這台瀏覽器，不會寫進程式。"),
+    el("p", { id: "pf-error", class: "bad" }, ""),
+    el("button", { type: "submit", class: "primary", id: "save-pf" }, state.mode === "pfpro" ? "更新 PF Pro 連線" : "連上 PF Pro"));
+}
+
+function renderPfCard() {
+  const count = window.PfPro ? PfPro.payAccounts(state.pfAccounts || []).length : 0;
+  return el("section", { class: "card" },
+    el("h2", {}, "PF Pro"),
+    el("p", { class: "muted" }, state.mode === "pfpro"
+      ? ("已連線。可記帳帳戶 " + count + " 個（現金、銀行、信用卡）。手機上原來的明細會留著，不會整批寫進 PF Pro。刪除只作廢 PF Pro 裡對應的那一筆。")
+      : "填好之後，新的支出、手續費和繳卡費會寫進 PF Pro。網址和 API key 只留在這台瀏覽器。"),
+    state.sheetPending ? el("p", { class: "muted" }, "另外還有 " + state.sheetPending + " 筆試算表變更未上傳。改回試算表模式後會補傳。") : null,
+    renderPfForm(),
+    el("button", { type: "button", class: "secondary", id: "refresh-pf-accounts", onClick: go(refreshPf) }, "重新讀取帳戶"),
+    el("button", { type: "button", class: "secondary", onClick: openCardPay }, "繳卡費"));
+}
+
+function renderPfAccounts() {
+  const list = window.PfPro ? PfPro.payAccounts(state.pfAccounts || []) : [];
+  if (!list.length) {
+    return el("section", { class: "card" },
+      el("h2", {}, "PF Pro 帳戶"),
+      el("p", { class: "muted" }, "還沒讀到帳戶。連上之後會列出現金、銀行與信用卡。"));
+  }
+  return el("section", { class: "card" },
+    el("h2", {}, "PF Pro 帳戶"),
+    el("p", { class: "muted" }, "記一筆時選這些帳戶。餘額以 PF Pro 為準，這裡不重算。"),
+    list.map((account) => el("div", { class: "kv" },
+      el("span", {}, account.name),
+      el("strong", {}, account.id))));
+}
+
+async function connectPfFromForm() {
+  const urlNode = document.getElementById("pf-url");
+  const tokenNode = document.getElementById("pf-token");
+  const url = urlNode ? urlNode.value.trim() : "";
+  const token = tokenNode ? tokenNode.value.trim() : "";
+  const show = (text) => {
+    const node = document.getElementById("pf-error");
+    if (node) node.textContent = text || "";
+  };
+  const problem = PfPro.endpointError(url, token);
+  if (problem) { show(problem); return; }
+  show("連線中…");
+  try {
+    const creds = { url: url, token: token };
+    await pfGet("health", creds);
+    const remote = await pfGet("accounts", creds);
+    const list = PfPro.normalizeAccounts(remote.accounts);
+    localStorage.setItem("pfApiUrl", url);
+    localStorage.setItem("pfApiToken", token);
+    localStorage.setItem("pfAccounts", JSON.stringify(list));
+    localStorage.setItem("ledgerMode", "pfpro");
+    state.mode = "pfpro";
+    state.pfAccounts = list;
+    state.settingsFocus = "";
+    state.loadError = "";
+    state.tab = "ledger";
+    show("");
+    toast("已連上 PF Pro。可記帳帳戶 " + PfPro.payAccounts(list).length + " 個");
+    render();
+    refreshPf();
+  } catch (error) {
+    show(messageOf(error));
+  }
+}
+
+function disconnectPf() {
+  const sheetUrl = (localStorage.getItem("apiUrl") || "").trim();
+  const sheetToken = localStorage.getItem("apiToken") || "";
+  if (sheetUrl && sheetToken && !window.confirm("中斷 PF Pro，並改顯示試算表裡的帳？手機上還沒同步的畫面會被試算表蓋過。")) return;
+  localStorage.removeItem("pfApiUrl");
+  localStorage.removeItem("pfApiToken");
+  localStorage.removeItem("pfAccounts");
+  state.pfAccounts = [];
+  state.loadError = "";
+  if (sheetUrl && sheetToken) {
+    state.mode = "cloud";
+    localStorage.setItem("ledgerMode", "cloud");
+    toast("已改回試算表");
+    render();
+    refreshCloud();
+    return;
+  }
+  state.mode = state.data.accounts.length ? "local" : "unset";
+  localStorage.setItem("ledgerMode", state.mode === "local" ? "local" : "");
+  toast("已中斷 PF Pro");
+  render();
 }
 
 async function refreshCloud() {
@@ -1952,10 +2421,21 @@ function lastCategory(kind) {
   return { class1: String(main.id), class2: "" };
 }
 
-function openForm(tx, preset) {
+function defaultAccountId(tx) {
+  if (pfActive()) {
+    const accounts = PfPro.payAccounts(state.pfAccounts || []);
+    const current = tx ? String(tx.accountId || "") : (localStorage.getItem("pfLastAccountId") || "");
+    if (accounts.some((account) => account.id === current)) return current;
+    return accounts[0] ? accounts[0].id : "";
+  }
   const accounts = state.data.accounts;
-  const last = localStorage.getItem("lastAccountId") || "";
-  const fallback = accounts.some((account) => String(account.id) === last) ? last : (accounts[0] ? accounts[0].id : "");
+  const current = tx ? String(tx.accountId || "") : (localStorage.getItem("lastAccountId") || "");
+  if (accounts.some((account) => String(account.id) === current)) return current;
+  return accounts[0] ? accounts[0].id : "";
+}
+
+function openForm(tx, preset) {
+  const fallback = defaultAccountId(tx);
   const kind = tx ? tx.type : activeKind();
   const remembered = tx ? null : lastCategory(kind);
   state.form = {
@@ -1974,8 +2454,19 @@ function openForm(tx, preset) {
     photoName: "",
     photoFileId: tx && tx.photoFileId ? tx.photoFileId : "",
     createdAt: tx && tx.createdAt ? tx.createdAt : "",
+    reimburse: !!(tx && tx.uid && (loadPfMeta()[tx.uid] || {}).reimburse),
     saving: false,
   };
+  if (pfActive()) {
+    const main = categoryByLevel(state.data, state.form.class1, "1");
+    const sub = categoryByLevel(state.data, state.form.class2, "2");
+    if (!main || PfPro.mainHidden(main.name)) {
+      state.form.class1 = "";
+      state.form.class2 = "";
+    } else if (sub && PfPro.subHidden(main.name, sub.name)) {
+      state.form.class2 = "";
+    }
+  }
   state.overlay = { type: "form" };
   render();
 }
@@ -2003,6 +2494,7 @@ function closeSheet() {
   state.overlay = null;
   state.form = null;
   state.projectForm = null;
+  state.cardPay = null;
   render();
 }
 
@@ -2067,6 +2559,7 @@ function renderSheet() {
   } else if (state.overlay.type === "detail") sheet.append(renderDetail(state.overlay.uid));
   else if (state.overlay.type === "new-project") sheet.append(renderNewProject());
   else if (state.overlay.type === "project") sheet.append(renderProjectSheet(state.overlay.id));
+  else if (state.overlay.type === "cardpay") sheet.append(renderCardPay());
 }
 
 function sheetFrame(title, body, footer) {
@@ -2096,7 +2589,11 @@ function renderForm() {
       el("div", { class: "amount-block" }, el("p", { class: "eyebrow" }, "金額"), el("p", { id: "amount-display", class: "hero-num is-empty" }, "0"))),
     el("p", { class: "eyebrow", id: "frequent-label", hidden: true }, "常用"),
     el("div", { id: "frequent", class: "chips", hidden: true }),
-    el("p", { id: "picked", class: "picked" }, "先選分類"),
+      el("p", { id: "picked", class: "picked" }, "先選分類"),
+    pfActive() ? el("p", { class: "muted", id: "pf-block-note" }, PfPro.BLOCK_NOTE) : null,
+    el("label", { class: "check", id: "reimburse-wrap", hidden: true },
+      el("input", { id: "reimburse-input", type: "checkbox", checked: !!form.reimburse, onChange: (event) => { state.form.reimburse = event.target.checked; } }),
+      "待報帳（加在 PF Pro 的說明後面）"),
     el("div", { id: "cat-grid", class: "grid4" }),
     el("div", { id: "subs", class: "chips" }),
     el("div", { class: "split" },
@@ -2110,7 +2607,8 @@ function renderForm() {
         el("p", { id: "date-read", class: "muted" }, dateRead(form.date))),
       el("div", {},
         el("label", { for: "account-input" }, "帳戶"),
-        accountSelect())),
+        accountSelect(),
+        pfActive() ? el("p", { class: "muted" }, "帳戶來自 PF Pro。照片只留在這台手機。") : null)),
     el("details", moreAttrs,
       el("summary", {}, "備註、專案、照片"),
       el("label", { for: "project-input" }, "專案"),
@@ -2131,8 +2629,46 @@ function renderForm() {
   return sheetFrame(form.editing ? "編輯" : "記一筆", body, footer);
 }
 
+function appendAccountOptions(select, accounts, selected) {
+  const groups = [
+    ["現金", accounts.filter((account) => account.type === "cash_wallet")],
+    ["銀行", accounts.filter((account) => account.type === "bank_cash" || account.type === "bank_fx")],
+    ["信用卡", accounts.filter((account) => account.type === "credit_card")],
+  ];
+  groups.forEach((group) => {
+    if (!group[1].length) return;
+    const box = el("optgroup", { label: group[0] });
+    group[1].forEach((account) => {
+      const option = el("option", { value: account.id }, account.name + " · " + account.id);
+      if (String(account.id) === String(selected)) option.selected = true;
+      box.append(option);
+    });
+    select.append(box);
+  });
+}
+
+function visibleMains(kind) {
+  return mainCats(state.data, kind).filter((cat) => !pfActive() || !PfPro.mainHidden(cat.name));
+}
+
+function visibleSubs(parentId) {
+  const subs = subCats(state.data, parentId);
+  if (!pfActive()) return subs;
+  const main = categoryByLevel(state.data, parentId, "1");
+  return subs.filter((cat) => !PfPro.subHidden(main && main.name, cat.name));
+}
+
 function accountSelect() {
   const select = el("select", { id: "account-input", onChange: (event) => { state.form.accountId = event.target.value; } });
+  if (pfActive()) {
+    const accounts = PfPro.payAccounts(state.pfAccounts || []);
+    if (!accounts.length) {
+      select.append(el("option", { value: "" }, "尚未取得 PF Pro 帳戶"));
+      return select;
+    }
+    appendAccountOptions(select, accounts, state.form.accountId);
+    return select;
+  }
   if (!state.data.accounts.length) {
     select.append(el("option", { value: "" }, "沒有帳戶"));
     return select;
@@ -2216,7 +2752,15 @@ function paintFrequent() {
   const host = document.getElementById("frequent");
   const label = document.getElementById("frequent-label");
   if (!host || !state.form) return;
-  const pairs = frequentPairs(state.data, state.form.type, new Date(), 120);
+  const pairs = frequentPairs(state.data, state.form.type, new Date(), 120).filter((pair) => {
+    if (!pfActive()) return true;
+    const picked = pairLabel(state.data, pair[0]);
+    const main = categoryByLevel(state.data, picked.class1, "1");
+    const sub = picked.class2 ? categoryByLevel(state.data, picked.class2, "2") : null;
+    if (main && PfPro.mainHidden(main.name)) return false;
+    if (sub && main && PfPro.subHidden(main.name, sub.name)) return false;
+    return true;
+  });
   host.hidden = !pairs.length;
   if (label) label.hidden = !pairs.length;
   if (!pairs.length) {
@@ -2234,7 +2778,7 @@ function paintFrequent() {
 function paintCats() {
   const host = document.getElementById("cat-grid");
   if (!host || !state.form) return;
-  const cats = mainCats(state.data, state.form.type);
+  const cats = visibleMains(state.form.type);
   if (!cats.length) {
     host.replaceChildren(el("p", { class: "muted" }, "還沒有這個類型的分類"));
     return;
@@ -2254,11 +2798,23 @@ function paintPicked() {
   node.textContent = main || sub ? [main && main.name, sub && sub.name].filter(Boolean).join(" · ") : "先選分類";
 }
 
+function paintReimburse() {
+  const wrap = document.getElementById("reimburse-wrap");
+  if (!wrap || !state.form) return;
+  const main = categoryByLevel(state.data, state.form.class1, "1");
+  const sub = categoryByLevel(state.data, state.form.class2, "2");
+  const decision = main && pfActive() ? PfPro.resolveCategory(main.name, sub && sub.name, state.form.type) : null;
+  const show = !!(decision && decision.ok && decision.category === "工作");
+  wrap.hidden = !show;
+  if (!show) state.form.reimburse = false;
+}
+
 function paintSubs() {
   paintPicked();
+  paintReimburse();
   const host = document.getElementById("subs");
   if (!host || !state.form) return;
-  const subs = subCats(state.data, state.form.class1);
+  const subs = visibleSubs(state.form.class1);
   host.replaceChildren.apply(host, subs.map((cat) => el("button", {
     type: "button", class: "chip",
     "aria-pressed": String(cat.id) === String(state.form.class2) ? "true" : "false",
@@ -2269,7 +2825,7 @@ function paintSubs() {
 function selectCategory(level, id) {
   if (level === "1") {
     state.form.class1 = id;
-    const subs = subCats(state.data, id);
+    const subs = visibleSubs(id);
     if (!subs.some((cat) => String(cat.id) === String(state.form.class2))) state.form.class2 = subs.length === 1 ? subs[0].id : "";
   } else {
     const picked = resolveSubSelection(state.data, id);
@@ -2306,6 +2862,9 @@ function readFormDom() {
     if (id === "project-input") state.form.projectId = node.value;
     if (id === "memo-input") state.form.memo = node.value;
   });
+  const reimburse = document.getElementById("reimburse-input");
+  const reimburseWrap = document.getElementById("reimburse-wrap");
+  if (reimburse && reimburseWrap && state.form && !reimburseWrap.hidden) state.form.reimburse = reimburse.checked;
 }
 
 function parseAmount(value) {
@@ -2317,10 +2876,22 @@ function parseAmount(value) {
 function validateForm() {
   if (!(parseAmount(state.form.amountStr) > 0)) return "請輸入金額";
   if (!state.form.date) return "請選擇日期";
-  if (!state.form.accountId) return "請選擇帳戶";
+  if (pfActive()) {
+    const accounts = PfPro.payAccounts(state.pfAccounts || []);
+    if (!accounts.length) return "請先到設定連上 PF Pro，讀取帳戶";
+    if (!accounts.some((account) => account.id === String(state.form.accountId))) return "請選擇 PF Pro 帳戶";
+    const chosen = accounts.find((account) => account.id === String(state.form.accountId));
+    if (chosen && chosen.currency && chosen.currency !== "TWD") return "PF Pro 快速記帳目前只寫台幣帳戶";
+  } else if (!state.form.accountId) return "請選擇帳戶";
   if (!state.form.class1) return "請選擇分類";
-  const subs = subCats(state.data, state.form.class1);
+  const subs = visibleSubs(state.form.class1);
   if (subs.length && !subs.some((cat) => String(cat.id) === String(state.form.class2))) return "請再選子分類";
+  if (pfActive()) {
+    const main = categoryByLevel(state.data, state.form.class1, "1");
+    const sub = categoryByLevel(state.data, state.form.class2, "2");
+    const decision = PfPro.resolveCategory(main && main.name, sub && sub.name, state.form.type);
+    if (!decision.ok) return decision.error;
+  }
   return "";
 }
 
@@ -2367,7 +2938,7 @@ async function saveForm() {
   if (button) { button.disabled = true; button.textContent = "儲存中…"; }
   try {
     if (!state.form.uid) state.form.uid = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    const now = taipeiFromUnix(Math.floor(Date.now() / 1000));
+    const now = PfPro.taipeiStamp(new Date());
     let photoFileId = state.form.photoFileId || "";
     if (state.form.photoData) photoFileId = await storePhoto(state.form, state.form.uid);
     const row = publicTx({
@@ -2386,7 +2957,8 @@ async function saveForm() {
       modifiedAt: now,
     });
     const result = await commit({ op: "upsertTx", row: row });
-    localStorage.setItem("lastAccountId", row.accountId);
+    if (pfActive()) localStorage.setItem("pfLastAccountId", row.accountId);
+    else localStorage.setItem("lastAccountId", row.accountId);
     localStorage.setItem("lastClass1", row.class1 || "");
     localStorage.setItem("lastClass2", row.class2 || "");
     if (String(state.data.settings.demo) === "1") {
@@ -2416,6 +2988,145 @@ async function removeTx(uid) {
   render();
 }
 
+function displayAccountName(id) {
+  const local = findById(state.data.accounts, id);
+  if (local && local.name) return local.name;
+  const remote = (state.pfAccounts || []).find((account) => String(account.id) === String(id));
+  if (remote && remote.name) return remote.name;
+  return id ? String(id) : "";
+}
+
+function openCardPay() {
+  if (!pfActive()) {
+    state.settingsFocus = "pfpro";
+    state.tab = "settings";
+    toast("請先連上 PF Pro");
+    render();
+    return;
+  }
+  const banks = PfPro.bankAccounts(state.pfAccounts || []);
+  const cards = PfPro.cardAccounts(state.pfAccounts || []);
+  const lastBank = localStorage.getItem("pfLastBankId") || "";
+  const lastCard = localStorage.getItem("pfLastCardId") || "";
+  state.cardPay = {
+    date: state.day || localISODate(new Date()),
+    amount: "",
+    fromId: banks.some((account) => account.id === lastBank) ? lastBank : (banks[0] ? banks[0].id : ""),
+    toId: cards.some((account) => account.id === lastCard) ? lastCard : (cards[0] ? cards[0].id : ""),
+    memo: "",
+    saving: false,
+  };
+  state.overlay = { type: "cardpay" };
+  render();
+}
+
+function readCardPayDom() {
+  if (!state.cardPay) return;
+  const date = document.getElementById("pay-date");
+  const amount = document.getElementById("pay-amount");
+  const from = document.getElementById("pay-from");
+  const to = document.getElementById("pay-to");
+  const memo = document.getElementById("pay-memo");
+  if (date) state.cardPay.date = date.value;
+  if (amount) state.cardPay.amount = amount.value;
+  if (from) state.cardPay.fromId = from.value;
+  if (to) state.cardPay.toId = to.value;
+  if (memo) state.cardPay.memo = memo.value;
+}
+
+function paintCardError(message) {
+  const node = document.getElementById("pay-error");
+  if (node) node.textContent = message || "";
+}
+
+function renderCardPay() {
+  const draft = state.cardPay || { date: localISODate(new Date()), amount: "", fromId: "", toId: "", memo: "" };
+  const banks = PfPro.bankAccounts(state.pfAccounts || []);
+  const cards = PfPro.cardAccounts(state.pfAccounts || []);
+  const from = el("select", { id: "pay-from", onChange: (event) => { state.cardPay.fromId = event.target.value; } });
+  const to = el("select", { id: "pay-to", onChange: (event) => { state.cardPay.toId = event.target.value; } });
+  if (!banks.length) from.append(el("option", { value: "" }, "沒有銀行帳戶"));
+  banks.forEach((account) => {
+    const option = el("option", { value: account.id }, account.name + " · " + account.id);
+    if (account.id === draft.fromId) option.selected = true;
+    from.append(option);
+  });
+  if (!cards.length) to.append(el("option", { value: "" }, "沒有信用卡"));
+  cards.forEach((account) => {
+    const option = el("option", { value: account.id }, account.name + " · " + account.id);
+    if (account.id === draft.toId) option.selected = true;
+    to.append(option);
+  });
+  const log = loadPayLog();
+  const body = el("div", {},
+    el("p", { class: "muted" }, "從銀行轉到信用卡。這筆是轉帳，不會算進支出。"),
+    el("label", { for: "pay-amount" }, "金額"),
+    el("input", { id: "pay-amount", inputmode: "decimal", value: draft.amount || "", onInput: (event) => { state.cardPay.amount = event.target.value; } }),
+    el("label", { for: "pay-date" }, "日期"),
+    el("input", { id: "pay-date", type: "date", value: draft.date || "", onChange: (event) => { state.cardPay.date = event.target.value; } }),
+    el("label", { for: "pay-from" }, "轉出銀行"),
+    from,
+    el("label", { for: "pay-to" }, "轉入信用卡"),
+    to,
+    el("label", { for: "pay-memo" }, "備註"),
+    el("input", { id: "pay-memo", maxlength: "80", value: draft.memo || "", onInput: (event) => { state.cardPay.memo = event.target.value; } }),
+    el("p", { id: "pay-error", class: "bad" }, ""),
+    log.length ? el("div", {}, el("p", { class: "eyebrow" }, "最近的繳卡費"), log.slice(0, 6).map((row) => el("div", { class: "kv" },
+      el("span", {}, (row.date || "") + " " + (row.fromName || "") + " → " + (row.toName || "")),
+      el("strong", {}, formatMoney(row.amount) + (row.state === "done" ? "" : " · 待上傳"))))) : null);
+  const footer = el("div", { class: "dock" },
+    el("button", { type: "button", class: "primary", id: "save-pay", onClick: go(saveCardPay) }, "記一筆繳卡費"));
+  return sheetFrame("繳卡費", body, footer);
+}
+
+async function saveCardPay() {
+  if (!state.cardPay || state.cardPay.saving) return;
+  readCardPayDom();
+  const banks = PfPro.bankAccounts(state.pfAccounts || []);
+  const cards = PfPro.cardAccounts(state.pfAccounts || []);
+  const from = banks.find((account) => account.id === state.cardPay.fromId);
+  const to = cards.find((account) => account.id === state.cardPay.toId);
+  if (!from) { paintCardError("請選銀行帳戶"); return; }
+  if (!to) { paintCardError("請選信用卡"); return; }
+  const uid = "pay" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const plan = PfPro.planTransfer({
+    uid: uid,
+    date: state.cardPay.date,
+    amount: parseAmount(state.cardPay.amount),
+    fromId: from.id,
+    toId: to.id,
+    fromType: from.type,
+    toType: to.type,
+    currency: from.currency,
+    toCurrency: to.currency,
+    memo: state.cardPay.memo,
+  });
+  if (!plan.ok) { paintCardError(plan.error); return; }
+  state.cardPay.saving = true;
+  const button = document.getElementById("save-pay");
+  if (button) button.disabled = true;
+  try {
+    await enqueuePfTransfer(plan, {
+      date: state.cardPay.date,
+      amount: parseAmount(state.cardPay.amount),
+      fromName: from.name,
+      toName: to.name,
+    });
+    localStorage.setItem("pfLastBankId", from.id);
+    localStorage.setItem("pfLastCardId", to.id);
+    if (navigator.onLine) await flushPfQueue();
+    const queued = state.pending > 0;
+    state.overlay = null;
+    state.cardPay = null;
+    toast(queued ? "繳卡費已留在這台手機，連線後寫入" : "已記一筆繳卡費");
+    render();
+  } catch (error) {
+    if (state.cardPay) state.cardPay.saving = false;
+    if (button) button.disabled = false;
+    paintCardError(messageOf(error));
+  }
+}
+
 function detailRow(label, value) {
   if (!value) return null;
   return el("div", { class: "kv" }, el("span", {}, label), el("strong", {}, value));
@@ -2432,7 +3143,7 @@ function renderDetail(uid) {
     detailRow("類型", tx.type === "income" ? "收入" : "支出"),
     detailRow("分類", [main && main.name, sub && sub.name].filter(Boolean).join(" / ")),
     detailRow("日期", tx.date ? formatDayLabel(tx.date) + " " + weekday(tx.date) : ""),
-    detailRow("帳戶", (findById(state.data.accounts, tx.accountId) || {}).name),
+    detailRow("帳戶", displayAccountName(tx.accountId)),
     detailRow("專案", (findById(state.data.projects, tx.projectId) || {}).name),
     detailRow("備註", tx.memo),
     detailRow("發票", tx.invoiceId),
@@ -2623,9 +3334,9 @@ function paintImportStatus() {
     if (importUi.resume && state.mode === "cloud") {
       nodes.push(el("p", {}, "這個檔案上次傳到一半。"));
       nodes.push(el("button", { type: "button", class: "primary", id: "import-go", onClick: go(() => runImportClick("resume")) }, "繼續上傳"));
-      nodes.push(el("button", { type: "button", class: "secondary", onClick: go(() => runImportClick("restart")) }, "清空後重新上傳"));
+      nodes.push(el("button", { type: "button", class: "secondary", onClick: go(() => runImportClick("restart")) }, "重新從頭上傳"));
     } else {
-      nodes.push(el("button", { type: "button", class: "primary", id: "import-go", onClick: go(() => runImportClick("go")) }, state.mode === "local" ? "載入到這台手機" : "開始寫入"));
+      nodes.push(el("button", { type: "button", class: "primary", id: "import-go", onClick: go(() => runImportClick("go")) }, state.mode === "cloud" ? "開始寫入" : "載入到這台手機"));
     }
   } else if (importUi.phase === "idle") {
     nodes.push(el("p", { class: "muted" }, "選擇備份後會先顯示筆數，確認了才寫入。"));
@@ -2635,11 +3346,10 @@ function paintImportStatus() {
 
 async function runImportClick(mode) {
   if (!importBundle || importUi.phase === "uploading" || importUi.phase === "parsing") return;
-  if (state.mode === "local") { await importLocal(importBundle); return; }
+  if (state.mode === "local" || state.mode === "pfpro") { await importLocal(importBundle); return; }
   if (state.mode !== "cloud") { toast("請先連上試算表，或改用本機試用"); return; }
-  const checkbox = document.getElementById("clear-first");
   const resume = mode === "resume";
-  const clear = mode === "restart" || (!resume && checkbox && checkbox.checked);
+  const clear = false;
   importUi.phase = "uploading";
   importUi.error = "";
   paintImportStatus();
@@ -2724,15 +3434,7 @@ function reportImport(message) {
 async function pushBundle(bundle, options) {
   let checkpoint = options.resume ? loadCheckpoint() : null;
   if (!checkpoint || checkpoint.sig !== options.sig) checkpoint = { sig: options.sig, cleared: false, progress: {} };
-  if (options.clear && !checkpoint.cleared) {
-    for (let i = 0; i < IMPORT_CLEAR_SHEETS.length; i++) {
-      reportImport("清空 " + IMPORT_CLEAR_SHEETS[i]);
-      await api("clear", { sheet: IMPORT_CLEAR_SHEETS[i] }, 60000);
-    }
-    checkpoint.cleared = true;
-    checkpoint.progress = {};
-    saveCheckpoint(checkpoint);
-  }
+  if (options.clear) throw new Error("清空試算表已停用");
   const stages = [
     ["accounts", "Accounts", bundle.accounts, accountToRow, "帳戶"],
     ["projects", "Projects", bundle.projects, projectToRow, "專案"],
@@ -2783,20 +3485,30 @@ async function boot() {
     const snap = await kvGet("snapshot");
     if (snap && typeof snap === "object") state.data = normalizeData(snap);
     const queue = (await kvGet("queue")) || [];
-    state.pending = queue.length;
+    const pfQueue = (await kvGet("pfQueue")) || [];
+    state.sheetPending = queue.length;
     queue.forEach((op) => applyOp(state.data, op));
+    pfQueue.forEach((op) => { if (op && op.local) applyOp(state.data, op.local); });
+    state.pfQueueBoot = pfQueue.length;
   } catch (error) {
     state.loadError = "讀不到這台手機上的備份";
   }
   const url = (localStorage.getItem("apiUrl") || "").trim();
   const token = localStorage.getItem("apiToken") || "";
-  if (url && token) state.mode = "cloud";
-  else if (localStorage.getItem("ledgerMode") === "local") state.mode = "local";
+  const pfUrl = (localStorage.getItem("pfApiUrl") || "").trim();
+  const pfToken = localStorage.getItem("pfApiToken") || "";
+  const savedMode = localStorage.getItem("ledgerMode") || "";
+  if (savedMode === "pfpro" && pfUrl && pfToken) state.mode = "pfpro";
+  else if (url && token) state.mode = "cloud";
+  else if (savedMode === "local") state.mode = "local";
   else state.mode = "unset";
+  state.pfAccounts = loadPfAccountCache();
+  state.pending = state.mode === "pfpro" ? (state.pfQueueBoot || 0) : (state.sheetPending || 0);
   focusDay(localISODate(new Date()));
   state.booting = false;
   render();
   if (state.mode === "cloud") refreshCloud();
+  else if (state.mode === "pfpro") refreshPf();
 }
 
 document.getElementById("fab").addEventListener("click", () => openForm(null));
@@ -2831,7 +3543,7 @@ document.addEventListener("keydown", (event) => {
     saveForm();
   }
 });
-window.addEventListener("online", () => { state.online = true; if (state.mode === "cloud") refreshCloud(); else render(); });
+window.addEventListener("online", () => { state.online = true; if (state.mode === "cloud" || state.mode === "pfpro") syncNow(); else render(); });
 window.addEventListener("offline", () => { state.online = false; render(); });
 window.addEventListener("error", (event) => {
   const view = document.getElementById("view");

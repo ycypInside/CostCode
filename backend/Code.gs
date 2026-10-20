@@ -3,12 +3,13 @@
 // 指令碼屬性設定 TOKEN。不要把 TOKEN 寫進這個檔案。
 // 修改後：部署 → 管理部署作業 → 編輯 → 新版本。不要按「新增部署作業」，否則網址會換。
 // 版本格式為台北時間 YYYYMMDD-HHMM。成功回應都會帶 version。doGet 只回版本、不含資料。
+// clear 已停用。deleteTx 只把 Transactions 的 deleted 標成 1，不刪列。讀取時略過 deleted。
 
-const BACKEND_VERSION = "20261009-1415";
+const BACKEND_VERSION = "20261020-1715";
 
 const SHEETS = {
   Transactions: {
-    headers: ["uid", "date", "type", "amount", "accountId", "class1", "class2", "projectId", "memo", "invoiceId", "photoFileId", "createdAt", "modifiedAt"],
+    headers: ["uid", "date", "type", "amount", "accountId", "class1", "class2", "projectId", "memo", "invoiceId", "photoFileId", "createdAt", "modifiedAt", "deleted"],
     nums: ["amount"],
   },
   Accounts: {
@@ -64,7 +65,7 @@ function doPost(e) {
     } else if (action === "all") {
       result = readAll_();
     } else if (action === "clear") {
-      result = clearSheet_(body.sheet);
+      return json_({ ok: false, error: "clear 已停用，不會清空試算表", version: BACKEND_VERSION });
     } else if (action === "append") {
       result = appendRows_(body.sheet, body.rows);
     } else if (action === "upsertTx") {
@@ -190,6 +191,7 @@ function readSheet_(name) {
       obj[header] = coerceIn_(header, values[r][c], spec);
     });
     if (obj[idHeader] === "" || obj[idHeader] == null) continue;
+    if (name === "Transactions" && isDeletedFlag_(obj.deleted)) continue;
     out.push(obj);
   }
   return out;
@@ -209,12 +211,12 @@ function coerceIn_(header, value, spec) {
   return String(value);
 }
 
-function clearSheet_(name) {
-  if (!SHEETS[name]) throw new Error("未知的分頁：" + name);
-  const sh = sheet_(name, true);
-  const last = sh.getLastRow();
-  if (last > 1) sh.deleteRows(2, last - 1);
-  return { cleared: name };
+function isDeletedFlag_(value) {
+  return value === 1 || value === true || value === "1" || String(value).toLowerCase() === "true";
+}
+
+function clearSheet_() {
+  throw new Error("clear 已停用，不會清空試算表");
 }
 
 function appendRows_(name, rows) {
@@ -310,10 +312,17 @@ function upsertTx_(row) {
 function deleteTx_(uid) {
   const id = uid == null ? "" : String(uid);
   if (!id) throw new Error("缺少 uid");
+  const spec = SHEETS.Transactions;
   const sh = sheet_("Transactions", true);
   const hits = findRows_(sh, id);
-  for (let i = hits.length - 1; i >= 0; i--) sh.deleteRow(hits[i]);
-  return { uid: id, deleted: hits.length };
+  const deletedCol = spec.headers.indexOf("deleted") + 1;
+  const modifiedCol = spec.headers.indexOf("modifiedAt") + 1;
+  const stamp = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd'T'HH:mm:ss") + "+08:00";
+  hits.forEach(function (rowIndex) {
+    if (deletedCol > 0) sh.getRange(rowIndex, deletedCol).setNumberFormat("@").setValue("1");
+    if (modifiedCol > 0) sh.getRange(rowIndex, modifiedCol).setNumberFormat("@").setValue(stamp);
+  });
+  return { uid: id, deleted: hits.length, soft: true };
 }
 
 function findRows_(sh, uid) {
