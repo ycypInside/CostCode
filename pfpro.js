@@ -458,6 +458,9 @@
     return url.toString();
   }
 
+  var PF_GET_TIMEOUT_MS = 15000;
+  var ACCOUNT_TTL_MS = 12 * 60 * 60 * 1000;
+
   function shouldRetryPost(payload, attempt) {
     if (attempt >= 2) return false;
     if (!payload || payload.ok) return false;
@@ -467,7 +470,21 @@
     if (reason) return false;
     var error = String(payload.error || "");
     if (error.indexOf("V9") === 0) return false;
-    return error === "unauthorized" || error === "bad json" || error === "unknown q" || error === "parse_error" || error === "busy" || error === "server";
+    if (error === "busy") return false;
+    return error === "unauthorized" || error === "bad json" || error === "unknown q" || error === "parse_error" || error === "server";
+  }
+
+  function retryDelayMs(attempt) {
+    var n = Math.max(0, Number(attempt) || 0);
+    if (n === 0) return 0;
+    return Math.min(8000, 400 * Math.pow(2, n - 1));
+  }
+
+  function accountCacheFresh(savedAt, now) {
+    var at = Number(savedAt);
+    var clock = Number(now);
+    if (!at || !clock || clock < at) return false;
+    return clock - at < ACCOUNT_TTL_MS;
   }
 
   function explainError(message, reason) {
@@ -932,6 +949,13 @@
     var voidKnownAdv = queueVoidLeg([], { uid: "u", leg: "adv", txnId: "TXA", voidRequestId: "cc-u-adv-void" });
     check("已入帳代墊刪除", voidKnownAdv.length === 1 && voidKnownAdv[0].action === "void_transaction" && voidKnownAdv[0].requestId === "cc-u-adv-void" && voidKnownAdv[0].data.txn_id === "TXA");
     check("應收帳戶", AR_FRIENDS === "ACC-AR-FRIENDS" && AR_FRIENDS_NAME === "朋友代墊（應收）" && hasFriendsAccount([{ account_id: AR_FRIENDS, name: AR_FRIENDS_NAME, type: "asset", currency: "TWD", status: "active" }]) && !payAccounts([{ account_id: AR_FRIENDS, name: AR_FRIENDS_NAME, type: "asset", currency: "TWD", status: "active" }]).length);
+    check("busy 不立刻重試", !shouldRetryPost({ ok: false, error: "busy" }, 0) && !shouldRetryPost({ ok: false, error: "busy" }, 1));
+    check("伺服器錯誤仍重試", shouldRetryPost({ ok: false, error: "server" }, 0) && shouldRetryPost({ ok: false, error: "server" }, 1) && !shouldRetryPost({ ok: false, error: "server" }, 2));
+    check("重試間隔", retryDelayMs(0) === 0 && retryDelayMs(1) === 400 && retryDelayMs(2) === 800 && retryDelayMs(3) === 1600 && retryDelayMs(8) === 8000);
+    var ttl = 12 * 60 * 60 * 1000;
+    check("帳戶快取 12 小時", ACCOUNT_TTL_MS === ttl && accountCacheFresh(1000, 1000 + ttl - 1) && !accountCacheFresh(1000, 1000 + ttl) && !accountCacheFresh("", 1000) && !accountCacheFresh(5000, 4000));
+    check("讀取逾時", PF_GET_TIMEOUT_MS === 15000);
+    check("request_id 維持原樣", food.requestId === "cc-u1" && split.legs[0].requestId === "cc-u-exp" && split.legs[1].requestId === "cc-u-adv" && repay.requestId === "cc-r1-repay");
 
     return { ok: cases.every(function (item) { return item.ok; }), cases: cases };
   }
@@ -961,6 +985,10 @@
     endpointError: endpointError,
     withPostQuery: withPostQuery,
     shouldRetryPost: shouldRetryPost,
+    retryDelayMs: retryDelayMs,
+    accountCacheFresh: accountCacheFresh,
+    PF_GET_TIMEOUT_MS: PF_GET_TIMEOUT_MS,
+    ACCOUNT_TTL_MS: ACCOUNT_TTL_MS,
     explainError: explainError,
     txnIdFromResponse: txnIdFromResponse,
     queueWrite: queueWrite,
