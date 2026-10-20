@@ -70,7 +70,9 @@
     background: rgba(255,255,255,.14); color: white; font-size: 28px; line-height: 1;
   }
   .flags { display: flex; gap: 6px; flex-wrap: wrap; }
-  .flags span { font-size: 12px; background: rgba(255,255,255,.16); border-radius: 999px; padding: 3px 8px; }
+  .flags span, .flags .flag { font-size: 12px; background: rgba(255,255,255,.16); border-radius: 999px; padding: 3px 8px; }
+  .flags .flag { border: 0; color: white; font-weight: 700; width: auto; min-height: 0; margin: 0; }
+  .flags .flag[data-state="pending"] { background: rgba(255,255,255,.32); }
   main { padding: 14px 16px calc(var(--nav-h) + 78px); }
   .hero { padding: 6px 2px 14px; }
   .eyebrow { margin: 0 0 4px; color: var(--muted); font-size: 13px; font-weight: 700; }
@@ -330,9 +332,9 @@
 </div>
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
-<script src="pfpro.js?v=20261020-2215"></script>
+<script src="pfpro.js?v=20261021-0115"></script>
 <script>
-const APP_VERSION = "20261020-2215";
+const APP_VERSION = "20261021-0115";
 const REQUIRES_BACKEND = "20261020-1715";
 
 /*__PURE_START__*/
@@ -1224,7 +1226,16 @@ function renderChrome() {
   const flags = el("div", { class: "flags" });
   if (state.syncing) flags.append(el("span", {}, "同步中"));
   if ((state.mode === "cloud" || state.mode === "pfpro") && !state.online) flags.append(el("span", {}, "離線"));
-  if (state.pending) flags.append(el("span", {}, state.pending + " 筆待上傳"));
+  if (state.mode === "pfpro") {
+    const waiting = state.pending > 0;
+    flags.append(el("button", {
+      type: "button",
+      class: "flag",
+      id: "pf-sync-badge",
+      "data-state": waiting ? "pending" : "synced",
+      onClick: () => schedulePfFlush(),
+    }, waiting ? ("待同步 " + state.pending) : "已同步"));
+  } else if (state.pending) flags.append(el("span", {}, state.pending + " 筆待上傳"));
   if (flags.childNodes.length) bar.append(flags);
   document.documentElement.style.setProperty("--topbar-h", bar.offsetHeight + "px");
   const tabs = document.getElementById("tabs");
@@ -1243,7 +1254,7 @@ function renderBanners() {
   const box = el("div", {});
   if (state.mode === "cloud" && !state.online) box.append(el("div", { class: "banner" }, "沒有網路。新的增刪改會先留在這台手機，連線後再上傳。"));
   if (state.mode === "pfpro" && !state.online) box.append(el("div", { class: "banner" }, "沒有網路。新的帳會先留在這台手機，連線後用同一個 request_id 寫入 PF Pro。"));
-  if (state.pending) {
+  if (state.pending && state.mode !== "pfpro") {
     box.append(el("div", { class: "banner" }, state.pending + " 筆還沒上傳。",
       el("button", { type: "button", onClick: go(syncNow) }, "立即上傳")));
   }
@@ -1784,26 +1795,23 @@ async function commit(op) {
       }
       await enqueuePfLegs(op.row, plan);
       await saveSnapshot();
-      if (!navigator.onLine) return { queued: true, plan: plan };
-      await flushPfQueue();
-      return { queued: state.pending > 0, plan: plan };
+      schedulePfFlush();
+      return { queued: true, optimistic: true, plan: plan };
     }
     const preview = previewPfTx(op.row, !!(state.form && state.form.reimburse));
     if (!preview.ok) throw new Error(preview.error);
     applyOp(state.data, op);
     await enqueuePfTx(op.row, !!(state.form && state.form.reimburse));
     await saveSnapshot();
-    if (!navigator.onLine) return { queued: true };
-    await flushPfQueue();
-    return { queued: state.pending > 0 };
+    schedulePfFlush();
+    return { queued: true, optimistic: true };
   }
   if (state.mode === "pfpro" && op.op === "deleteTx") {
     applyOp(state.data, op);
     await enqueuePfDelete(String(op.uid));
     await saveSnapshot();
-    if (!navigator.onLine) return { queued: true };
-    await flushPfQueue();
-    return { queued: state.pending > 0 };
+    schedulePfFlush();
+    return { queued: true, optimistic: true };
   }
   applyOp(state.data, op);
   if (state.mode !== "cloud") {
@@ -1902,10 +1910,25 @@ function pfCreds(override) {
 function loadPfAccountCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem("pfAccounts") || "[]");
-    return Array.isArray(parsed) && window.PfPro ? PfPro.normalizeAccounts(parsed) : [];
+    const list = Array.isArray(parsed) && window.PfPro ? PfPro.normalizeAccounts(parsed) : [];
+    if (list.length && !localStorage.getItem("pfAccountsAt")) localStorage.setItem("pfAccountsAt", String(Date.now()));
+    return list;
   } catch (error) {
     return [];
   }
+}
+
+function pfAccountCacheStale() {
+  if (!(state.pfAccounts || []).length) return true;
+  return !PfPro.accountCacheFresh(localStorage.getItem("pfAccountsAt"), Date.now());
+}
+
+function storePfAccounts(list) {
+  const rows = PfPro.normalizeAccounts(list);
+  localStorage.setItem("pfAccounts", JSON.stringify(rows));
+  localStorage.setItem("pfAccountsAt", String(Date.now()));
+  state.pfAccounts = rows;
+  return rows;
 }
 
 function loadPfMeta() {
@@ -2004,6 +2027,8 @@ function savePayLog(rows) {
 }
 
 let pfLock = Promise.resolve();
+let pfFlushActive = false;
+let pfFlushAgain = false;
 function withPfLock(fn) {
   const prev = pfLock;
   let release;
@@ -2291,6 +2316,8 @@ async function pfGet(q, creds) {
   const url = new URL(auth.url);
   url.searchParams.set("q", q);
   url.searchParams.set("token", auth.token);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PfPro.PF_GET_TIMEOUT_MS);
   let response;
   try {
     response = await fetch(url.toString(), {
@@ -2299,9 +2326,13 @@ async function pfGet(q, creds) {
       referrerPolicy: "no-referrer",
       cache: "no-store",
       credentials: "omit",
+      signal: controller.signal,
     });
   } catch (error) {
+    if (error.name === "AbortError") throw new Error("連線逾時，請再試一次");
     throw new Error("連不上 PF Pro");
+  } finally {
+    clearTimeout(timer);
   }
   const text = await response.text();
   let data;
@@ -2350,7 +2381,8 @@ async function pfPost(action, data, requestId, creds) {
   });
   let last = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) await new Promise((resolve) => setTimeout(resolve, attempt === 1 ? 300 : 800));
+    const wait = PfPro.retryDelayMs(attempt);
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
     last = await pfPostOnce(endpoint, body);
     if (!PfPro.shouldRetryPost(last, attempt)) break;
   }
@@ -2417,17 +2449,64 @@ function syncNow() {
   return refreshCloud();
 }
 
-async function refreshPf() {
+function paintPfSync() {
+  if (state.loadError && navigator.onLine && state.mode === "pfpro") refreshPfAccountsSoon();
+  if (state.overlay) renderChrome();
+  else render();
+}
+
+function schedulePfFlush() {
   if (state.mode !== "pfpro") return;
+  if (pfFlushActive) {
+    pfFlushAgain = true;
+    return;
+  }
+  pfFlushActive = true;
+  const run = () => flushPfQueue().then(() => {
+    if (pfFlushAgain) {
+      pfFlushAgain = false;
+      return run();
+    }
+    pfFlushActive = false;
+    paintPfSync();
+  }).catch((error) => {
+    pfFlushActive = false;
+    pfFlushAgain = false;
+    state.loadError = messageOf(error);
+    paintPfSync();
+  });
+  run();
+}
+
+let pfAccountsRefresh = null;
+function refreshPfAccountsSoon() {
+  if (pfAccountsRefresh || !navigator.onLine) return;
+  pfAccountsRefresh = fetchPfAccounts().catch(() => {}).finally(() => {
+    pfAccountsRefresh = null;
+    renderChrome();
+  });
+}
+
+async function fetchPfAccounts(creds) {
+  const data = await pfGet("accounts", creds);
+  return storePfAccounts(data.accounts);
+}
+
+function warmPf() {
+  if (state.mode !== "pfpro" || !navigator.onLine) return;
+  const auth = pfCreds();
+  if (PfPro.endpointError(auth.url, auth.token)) return;
+  pfGet("health").catch(() => {});
+}
+
+async function refreshPf(options) {
+  if (state.mode !== "pfpro") return;
+  const forceAccounts = !!(options && options.accounts);
   state.syncing = true;
   renderChrome();
   try {
     await flushPfQueue();
-    if (navigator.onLine) {
-      const data = await pfGet("accounts");
-      state.pfAccounts = PfPro.normalizeAccounts(data.accounts);
-      localStorage.setItem("pfAccounts", JSON.stringify(state.pfAccounts));
-    }
+    if (navigator.onLine && (forceAccounts || pfAccountCacheStale())) await fetchPfAccounts();
     if (!state.pending) state.loadError = "";
   } catch (error) {
     state.loadError = messageOf(error);
@@ -2463,7 +2542,7 @@ function renderPfCard() {
       : "填好之後，新的支出、手續費、代墊和繳卡費會寫進 PF Pro。網址和 API key 只留在這台瀏覽器。"),
     state.sheetPending ? el("p", { class: "muted" }, "另外還有 " + state.sheetPending + " 筆試算表變更未上傳。改回試算表模式後會補傳。") : null,
     renderPfForm(),
-    el("button", { type: "button", class: "secondary", id: "refresh-pf-accounts", onClick: go(refreshPf) }, "重新讀取帳戶"),
+    el("button", { type: "button", class: "secondary", id: "refresh-pf-accounts", onClick: go(() => refreshPf({ accounts: true })) }, "重新讀取帳戶"),
     el("button", { type: "button", class: "secondary", onClick: openCardPay }, "繳卡費"),
     el("button", { type: "button", class: "secondary", onClick: openRepay }, "朋友還錢"));
 }
@@ -2497,22 +2576,19 @@ async function connectPfFromForm() {
   show("連線中…");
   try {
     const creds = { url: url, token: token };
-    await pfGet("health", creds);
-    const remote = await pfGet("accounts", creds);
-    const list = PfPro.normalizeAccounts(remote.accounts);
+    pfGet("health", creds).catch(() => {});
+    const list = await fetchPfAccounts(creds);
     localStorage.setItem("pfApiUrl", url);
     localStorage.setItem("pfApiToken", token);
-    localStorage.setItem("pfAccounts", JSON.stringify(list));
     localStorage.setItem("ledgerMode", "pfpro");
     state.mode = "pfpro";
-    state.pfAccounts = list;
     state.settingsFocus = "";
     state.loadError = "";
     state.tab = "ledger";
     show("");
     toast("已連上 PF Pro。可記帳帳戶 " + PfPro.payAccounts(list).length + " 個");
     render();
-    refreshPf();
+    schedulePfFlush();
   } catch (error) {
     show(messageOf(error));
   }
@@ -2525,6 +2601,7 @@ function disconnectPf() {
   localStorage.removeItem("pfApiUrl");
   localStorage.removeItem("pfApiToken");
   localStorage.removeItem("pfAccounts");
+  localStorage.removeItem("pfAccountsAt");
   state.pfAccounts = [];
   state.loadError = "";
   if (sheetUrl && sheetToken) {
@@ -3353,9 +3430,7 @@ async function saveForm() {
     state.ledgerKind = row.type === "income" ? "income" : "expense";
     state.query = "";
     const queued = !!result.queued;
-    let message = queued ? "已記在這台手機，連線後上傳" : (row.createdAt === now ? "已記上一筆" : "已儲存");
-    if (result.plan && result.plan.wholeAdvance) message = queued ? "代墊已留在這台手機，連線後寫入" : "已記一筆代墊";
-    else if (result.plan && result.plan.advance > 0) message = queued ? "已記在這台手機，連線後上傳" : "已記上一筆，朋友的份另記代墊";
+    let message = result.optimistic ? "已記上（同步中）" : (queued ? "已記在這台手機，連線後上傳" : (row.createdAt === now ? "已記上一筆" : "已儲存"));
     toast(message);
     render();
   } catch (error) {
@@ -3370,7 +3445,7 @@ async function removeTx(uid) {
   const result = await commit({ op: "deleteTx", uid: uid });
   state.overlay = null;
   state.form = null;
-  toast(result.queued ? "已在手機上刪除，連線後同步" : "已刪除");
+  toast(result.optimistic ? "已刪除（同步中）" : (result.queued ? "已在手機上刪除，連線後同步" : "已刪除"));
   render();
 }
 
@@ -3500,11 +3575,10 @@ async function saveCardPay() {
     });
     localStorage.setItem("pfLastBankId", from.id);
     localStorage.setItem("pfLastCardId", to.id);
-    if (navigator.onLine) await flushPfQueue();
-    const queued = state.pending > 0;
     state.overlay = null;
     state.cardPay = null;
-    toast(queued ? "繳卡費已留在這台手機，連線後寫入" : "已記一筆繳卡費");
+    schedulePfFlush();
+    toast("已記上（同步中）");
     render();
   } catch (error) {
     if (state.cardPay) state.cardPay.saving = false;
@@ -3610,11 +3684,10 @@ async function saveRepay() {
       friendName: plan.friendName,
     });
     localStorage.setItem("pfLastRepayId", to.id);
-    if (navigator.onLine) await flushPfQueue();
-    const queued = state.pending > 0;
     state.overlay = null;
     state.repay = null;
-    toast(queued ? "朋友還錢已留在這台手機，連線後寫入" : "已記一筆朋友還錢");
+    schedulePfFlush();
+    toast("已記上（同步中）");
     render();
   } catch (error) {
     if (state.repay) state.repay.saving = false;
@@ -4011,7 +4084,10 @@ async function boot() {
   state.booting = false;
   render();
   if (state.mode === "cloud") refreshCloud();
-  else if (state.mode === "pfpro") refreshPf();
+  else if (state.mode === "pfpro") {
+    warmPf();
+    refreshPf();
+  }
 }
 
 document.getElementById("fab").addEventListener("click", () => openForm(null));
@@ -4048,6 +4124,11 @@ document.addEventListener("keydown", (event) => {
 });
 window.addEventListener("online", () => { state.online = true; if (state.mode === "cloud" || state.mode === "pfpro") syncNow(); else render(); });
 window.addEventListener("offline", () => { state.online = false; render(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || state.mode !== "pfpro") return;
+  warmPf();
+  if (state.pending) schedulePfFlush();
+});
 window.addEventListener("error", (event) => {
   const view = document.getElementById("view");
   if (state.booting && view) view.textContent = "畫面打不開：" + (event.message || "");
