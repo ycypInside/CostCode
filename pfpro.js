@@ -956,6 +956,79 @@
     };
   }
 
+  // GET q=transactions returns { ok, transactions[] } and ignores account_id.
+  // Each row uses txn_id, date, account_id, txn_type, category, amount, currency,
+  // amount_twd, flow_class, description, status, voided_at, request_id, created_at, updated_at.
+  var EXTERNAL_INCOME = { income: 1, dividend: 1, interest: 1 };
+  var EXTERNAL_EXPENSE = { expense: 1, fee: 1, tax: 1, loan_interest: 1 };
+
+  function externalLedgerRows(rows, options) {
+    var opts = options || {};
+    var remembered = {};
+    (opts.rememberedTxnIds || []).forEach(function (id) {
+      var key = String(id || "").trim();
+      if (key) remembered[key] = true;
+    });
+    var accountFilter = null;
+    if (Array.isArray(opts.accountIds) && opts.accountIds.length) {
+      accountFilter = {};
+      opts.accountIds.forEach(function (id) {
+        var key = String(id || "").trim();
+        if (key) accountFilter[key] = true;
+      });
+    }
+    var seen = {};
+    var out = [];
+    (rows || []).forEach(function (row) {
+      if (!row || typeof row !== "object") return;
+      var status = String(row.status || "active").trim().toLowerCase();
+      if (status === "void" || String(row.voided_at || "").trim()) return;
+      var requestId = String(row.request_id || "").trim();
+      if (/^cc-/i.test(requestId)) return;
+      var txnId = String(row.txn_id || "").trim();
+      if (!txnId || remembered[txnId] || seen[txnId]) return;
+      var accountId = String(row.account_id || "").trim();
+      if (accountFilter && !accountFilter[accountId]) return;
+      if (String(row.flow_class || "").trim() === "internal") return;
+      var kind = String(row.txn_type || "").trim();
+      var type = EXTERNAL_INCOME[kind] ? "income" : (EXTERNAL_EXPENSE[kind] ? "expense" : "");
+      if (!type) return;
+      var currency = String(row.currency || "TWD").trim() || "TWD";
+      var amount = Math.abs(Number(row.amount) || 0);
+      if (currency !== "TWD") {
+        var twd = Number(row.amount_twd);
+        if (isFinite(twd)) amount = Math.abs(twd);
+      }
+      amount = roundMoney(amount);
+      if (!(amount > 0)) return;
+      var date = String(row.date || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      seen[txnId] = true;
+      var category = String(row.category || "").trim();
+      var description = String(row.description || "").trim();
+      out.push({
+        uid: "pf:" + txnId,
+        date: date,
+        type: type,
+        amount: amount,
+        accountId: accountId,
+        class1: "",
+        class2: "",
+        projectId: "",
+        memo: description,
+        externalTitle: category || description || "記帳署",
+        invoiceId: "",
+        photoFileId: "",
+        createdAt: String(row.created_at || ""),
+        modifiedAt: String(row.updated_at || row.created_at || ""),
+        pfExternal: true,
+        txnId: txnId,
+        requestId: requestId
+      });
+    });
+    return out;
+  }
+
   function selfCheck() {
     var cases = [];
     function check(name, ok, detail) {
@@ -1189,6 +1262,30 @@
     });
     var freshSalary = { uid: "new-salary", class1: "salary", class2: "pay", modifiedAt: "2026-10-21T10:00:00+08:00" };
     check("舊薪資不入列", heldSalary.changed && heldSalary.queue.length === 1 && heldSalary.queue[0].requestId === "cc-keep" && seedQueue.length === 1 && heldSalary.meta.keep.txnId === "TX-KEEP" && heldSalary.meta["old-salary"].salaryHold === true && heldSalary.meta["old-salary"].salaryHoldAt === "2026-08-01 09:00:00" && heldSalary.meta["old-bonus"].salaryHold === true && !(heldSalary.meta.lunch && heldSalary.meta.lunch.salaryHold) && !heldSalary.meta.inv && !salarySyncable(oldSalary, heldSalary.meta, salaryCats) && !salarySyncable(oldBonus, heldSalary.meta, salaryCats) && !salarySyncable({ uid: "old-salary", class1: "salary", class2: "pay", modifiedAt: "" }, heldSalary.meta, salaryCats) && salarySyncable(oldLunch, heldSalary.meta, salaryCats) && salarySyncable(editedSalary, heldSalary.meta, salaryCats) && salarySyncable(freshSalary, heldSalary.meta, salaryCats) && stampedSalary["old-salary"].salaryHoldAt === "2026-10-21T09:00:00+08:00" && !salarySyncable(editedSalary, stampedSalary, salaryCats) && heldSalary.meta["old-salary"].salaryHoldAt === "2026-08-01 09:00:00" && !heldAgain.changed && heldAgain.queue.length === 1 && heldAgain.meta["old-salary"].salaryHoldAt === "2026-08-01 09:00:00" && heldSalary.flag === "pfSalarySync-20261021", JSON.stringify({ queue: heldSalary.queue, salary: heldSalary.meta["old-salary"], bonus: heldSalary.meta["old-bonus"] }));
+    var remoteRows = [
+      { txn_id: "TX-BK", date: "2026-10-20", account_id: "ACC-FUBON-TWD", txn_type: "expense", category: "餐飲", amount: -180, currency: "TWD", flow_class: "external", description: "午餐", status: "active", request_id: "bk-lunch", created_at: "2026-10-20T01:00:00.000Z" },
+      { txn_id: "TX-CC", date: "2026-10-20", account_id: "ACC-FUBON-TWD", txn_type: "expense", category: "餐飲", amount: -90, currency: "TWD", flow_class: "external", status: "active", request_id: "cc-u1" },
+      { txn_id: "TX-SPLIT", date: "2026-10-20", account_id: "ACC-FUBON-TWD", txn_type: "expense", category: "餐飲", amount: -40, currency: "TWD", flow_class: "external", status: "active", request_id: "CC-u-exp" },
+      { txn_id: "TX-KNOWN", date: "2026-10-20", account_id: "ACC-FUBON-TWD", txn_type: "income", category: "薪資", amount: 50000, currency: "TWD", flow_class: "external", status: "active", request_id: "bk-salary" },
+      { txn_id: "TX-VOID", date: "2026-10-20", account_id: "ACC-FUBON-TWD", txn_type: "expense", category: "交通", amount: -40, currency: "TWD", flow_class: "external", status: "void", voided_at: "2026-10-20T02:00:00.000Z", request_id: "bk-void" },
+      { txn_id: "TX-OTHER", date: "2026-10-19", account_id: "ACC-BROKER", txn_type: "fee", category: "手續費", amount: -15, currency: "TWD", flow_class: "investment_cost", status: "active", request_id: "bk-fee" },
+      { txn_id: "TX-XFER", date: "2026-10-18", account_id: "ACC-FUBON-TWD", txn_type: "transfer_out", category: "transfer", amount: -3000, currency: "TWD", flow_class: "internal", status: "active", request_id: "bk-xfer" },
+      { txn_id: "TX-USD", date: "2026-10-17", account_id: "ACC-FUBON-TWD", txn_type: "expense", category: "購物", amount: -10, amount_twd: -320, currency: "USD", flow_class: "external", status: "active", request_id: "bk-usd" },
+      { txn_id: "TX-INT", date: "2026-10-16", account_id: "ACC-FUBON-TWD", txn_type: "interest", category: "利息", amount: 12, currency: "TWD", flow_class: "external", status: "active", request_id: "bk-int" },
+      { txn_id: "TX-INT", date: "2026-10-16", account_id: "ACC-FUBON-TWD", txn_type: "interest", category: "利息", amount: 12, currency: "TWD", flow_class: "external", status: "active", request_id: "bk-int" }
+    ];
+    var merged = externalLedgerRows(remoteRows, { rememberedTxnIds: ["TX-KNOWN", ""], accountIds: ["ACC-FUBON-TWD"] });
+    var localSpend = [{ uid: "u1", type: "expense", amount: 90, date: "2026-10-20" }];
+    var shown = localSpend.concat(merged);
+    var monthExpense = 0;
+    var monthIncome = 0;
+    shown.forEach(function (tx) {
+      if (String(tx.date || "").slice(0, 7) !== "2026-10") return;
+      if (tx.type === "expense") monthExpense += tx.amount;
+      if (tx.type === "income") monthIncome += tx.amount;
+    });
+    var ids = merged.map(function (row) { return row.txnId; });
+    check("記帳署去重", merged.length === 3 && ids.join(",") === "TX-BK,TX-USD,TX-INT" && merged[0].amount === 180 && merged[0].type === "expense" && merged[0].pfExternal === true && merged[0].uid === "pf:TX-BK" && merged[0].externalTitle === "餐飲" && merged[0].memo === "午餐" && merged[1].amount === 320 && merged[2].type === "income" && merged[2].amount === 12 && monthExpense === 590 && monthIncome === 12 && !merged.some(function (row) { return row.txnId === "TX-CC" || row.txnId === "TX-SPLIT" || row.txnId === "TX-KNOWN" || row.txnId === "TX-VOID" || row.txnId === "TX-OTHER" || row.txnId === "TX-XFER"; }), JSON.stringify(merged));
 
     return { ok: cases.every(function (item) { return item.ok; }), cases: cases };
   }
@@ -1228,6 +1325,7 @@
     migrateSalaryHold: migrateSalaryHold,
     salarySyncable: salarySyncable,
     stampSalaryEdit: stampSalaryEdit,
+    externalLedgerRows: externalLedgerRows,
     txnIdFromResponse: txnIdFromResponse,
     queueWrite: queueWrite,
     queueVoid: queueVoid,
