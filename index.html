@@ -182,6 +182,7 @@
   .emoji { width: 42px; height: 42px; border-radius: 14px; background: var(--blue-soft); display: grid; place-items: center; font-size: 20px; }
   .tx-main { display: flex; flex-direction: column; min-width: 0; }
   .tx-title { font-weight: 700; }
+  .tx-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--blue-soft); color: var(--blue-ink); font-size: 11px; font-weight: 700; vertical-align: 1px; }
   .tx-memo { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .amt.expense { color: var(--expense); }
@@ -332,9 +333,9 @@
 </div>
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
-<script src="pfpro.js?v=20261021-0815"></script>
+<script src="pfpro.js?v=20261021-0845"></script>
 <script>
-const APP_VERSION = "20261021-0815";
+const APP_VERSION = "20261021-0845";
 const REQUIRES_BACKEND = "20261020-1715";
 
 /*__PURE_START__*/
@@ -858,6 +859,7 @@ function pairLabel(data, key) {
 }
 
 function txTitle(data, tx) {
+  if (tx && tx.externalTitle) return String(tx.externalTitle);
   const sub = categoryByLevel(data, tx.class2, "2");
   const main = categoryByLevel(data, tx.class1, "1");
   return (sub && sub.name) || (main && main.name) || "未分類";
@@ -883,7 +885,7 @@ function searchTransactions(data, query) {
   });
   return data.transactions.filter((tx) => {
     const hay = [
-      tx.memo, tx.amount, tx.date, tx.invoiceId,
+      tx.memo, tx.externalTitle, tx.pfExternal ? "記帳署" : "", tx.amount, tx.date, tx.invoiceId,
       (categoryByLevel(data, tx.class1, "1") || {}).name,
       (categoryByLevel(data, tx.class2, "2") || {}).name,
       (findById(data.projects, tx.projectId) || {}).name,
@@ -953,9 +955,10 @@ function categoryBreakdown(data, txs, kind) {
   const map = new Map();
   (txs || []).forEach((tx) => {
     if (kind && tx.type !== kind) return;
-    const id = String(tx.class1 || "");
-    const cat = categoryByLevel(data, id, "1");
-    const current = map.get(id) || { id: id, name: cat ? cat.name : "未分類", amount: 0 };
+    const external = tx && tx.externalTitle ? String(tx.externalTitle) : "";
+    const id = external ? ("ext:" + external) : String(tx.class1 || "");
+    const cat = external ? null : categoryByLevel(data, id, "1");
+    const current = map.get(id) || { id: id, name: external || (cat ? cat.name : "未分類"), amount: 0 };
     current.amount = round2(current.amount + (Number(tx.amount) || 0));
     map.set(id, current);
   });
@@ -1094,6 +1097,7 @@ const state = {
   cardPay: null,
   repay: null,
   pfAccounts: [],
+  pfExternalRaw: [],
   settingsFocus: "",
   sheetPending: 0,
   booting: true,
@@ -1376,16 +1380,55 @@ function renderLedgerShell() {
     el("div", { id: "list", class: "list-card" }));
 }
 
+function rememberedPfTxnIds() {
+  const meta = loadPfMeta();
+  const ids = [];
+  Object.keys(meta).forEach((uid) => {
+    const row = meta[uid] || {};
+    if (row.txnId) ids.push(String(row.txnId));
+    if (row.adv && row.adv.txnId) ids.push(String(row.adv.txnId));
+  });
+  return ids;
+}
+
+function ledgerTransactions() {
+  const local = state.data.transactions || [];
+  if (state.mode !== "pfpro" || !window.PfPro) return local;
+  const accountIds = PfPro.payAccounts(state.pfAccounts || []).map((account) => account.id);
+  const extra = PfPro.externalLedgerRows(state.pfExternalRaw || [], {
+    rememberedTxnIds: rememberedPfTxnIds(),
+    accountIds: accountIds,
+  });
+  if (!extra.length) return local;
+  return local.concat(extra);
+}
+
+function ledgerData() {
+  const transactions = ledgerTransactions();
+  if (state.mode !== "pfpro") return Object.assign({}, state.data, { transactions: transactions });
+  const known = {};
+  (state.data.accounts || []).forEach((account) => { known[String(account.id)] = true; });
+  const extraAccounts = (state.pfAccounts || []).filter((account) => account && !known[String(account.id)]).map((account) => ({ id: account.id, name: account.name }));
+  return Object.assign({}, state.data, {
+    transactions: transactions,
+    accounts: (state.data.accounts || []).concat(extraAccounts),
+  });
+}
+
+function findLedgerTx(uid) {
+  return ledgerTransactions().find((item) => item.uid === String(uid)) || null;
+}
+
 function visibleTransactions() {
   const kind = activeKind();
   const query = state.query.trim();
   if (query) {
-    const view = searchLimited(state.data, query, 300);
+    const view = searchLimited(ledgerData(), query, 300);
     const rows = view.rows.filter((tx) => tx.type === kind);
     return { rows: rows, total: rows.length, truncated: view.truncated && rows.length >= 300 };
   }
   const day = state.day || localISODate(new Date());
-  const rows = state.data.transactions.filter((tx) => tx.date === day && tx.type === kind);
+  const rows = ledgerTransactions().filter((tx) => tx.date === day && tx.type === kind);
   return { rows: rows, total: rows.length, truncated: false };
 }
 
@@ -1423,7 +1466,7 @@ function renderWeek() {
   const kind = activeKind();
   const labels = ["一", "二", "三", "四", "五", "六", "日"];
   const marked = {};
-  state.data.transactions.forEach((tx) => {
+  ledgerTransactions().forEach((tx) => {
     if (tx.type === kind && tx.date) marked[tx.date] = true;
   });
   return el("div", {},
@@ -1514,21 +1557,23 @@ function renderTxButton(tx) {
   const meta = [tx.memo, project && project.name, tx.invoiceId ? "發票" : "", tx.photoFileId ? "照片" : ""].filter(Boolean).join(" · ");
   return el("button", { type: "button", class: "tx", "data-uid": tx.uid, onClick: () => openDetail(tx.uid) },
     el("span", { class: "emoji", "aria-hidden": "true" }, txEmoji(state.data, tx)),
-    el("span", { class: "tx-main" }, el("span", { class: "tx-title" }, txTitle(state.data, tx)), meta ? el("span", { class: "tx-memo" }, meta) : null),
+    el("span", { class: "tx-main" },
+      el("span", { class: "tx-title" }, txTitle(state.data, tx), tx.pfExternal ? el("span", { class: "tx-badge" }, "記帳署") : null),
+      meta ? el("span", { class: "tx-memo" }, meta) : null),
     el("span", { class: "amt " + tx.type }, (tx.type === "income" ? "＋" : "") + formatMoney(tx.amount)));
 }
 
 function renderStats() {
   const today = new Date();
   const key = localISODate(today).slice(0, 7);
-  const spent = sumMonth(state.data.transactions, key, "expense");
+  const spent = sumMonth(ledgerTransactions(), key, "expense");
   const saved = Number(state.data.settings.monthlyBudget) || 0;
   const status = budgetStatus(spent, saved, today);
   const width = saved > 0 ? Math.min(100, Math.max(status.ratio > 0 ? 4 : 0, Math.round(status.ratio * 100))) : 0;
   let hint = "設定每月預算後，這裡會顯示這個月還能花多少。";
   if (saved > 0 && status.over) hint = "已經超出預算 " + formatMoney(spent - saved) + " 元";
   else if (saved > 0) hint = "剩下 " + formatMoney(status.remaining) + " 元 · 含今天還有 " + status.daysLeft + " 天，一天約 " + formatMoney(status.perDay) + " 元";
-  const monthTx = state.data.transactions.filter((tx) => String(tx.date || "").slice(0, 7) === key && tx.type === state.statsKind);
+  const monthTx = ledgerTransactions().filter((tx) => String(tx.date || "").slice(0, 7) === key && tx.type === state.statsKind);
   const breaks = categoryBreakdown(state.data, monthTx, state.statsKind);
   return el("div", {},
     el("section", { class: "card" },
@@ -1556,7 +1601,7 @@ function renderChart(keys) {
   const width = 360;
   const height = 176;
   const kind = state.statsKind === "income" ? "income" : "expense";
-  const values = keys.map((key) => sumMonth(state.data.transactions, key, kind));
+  const values = keys.map((key) => sumMonth(ledgerTransactions(), key, kind));
   const max = Math.max.apply(null, [1].concat(values));
   const slot = width / keys.length;
   const current = localISODate(new Date()).slice(0, 7);
@@ -1781,7 +1826,13 @@ async function enqueue(op) {
   state.pending = queue.length;
 }
 
+function isPfExternalUid(uid) {
+  return String(uid || "").indexOf("pf:") === 0;
+}
+
 async function commit(op) {
+  const touched = op && (op.uid || (op.row && op.row.uid));
+  if ((op && op.row && op.row.pfExternal) || isPfExternalUid(touched)) throw new Error("記帳署的帳只讀，不會寫進試算表");
   if (state.mode === "pfpro" && op.op === "upsertTx") {
     if (!PfPro.salarySyncable(op.row, loadPfMeta(), state.data.categories)) {
       applyOp(state.data, op);
@@ -1926,6 +1977,36 @@ function loadPfAccountCache() {
 function pfAccountCacheStale() {
   if (!(state.pfAccounts || []).length) return true;
   return !PfPro.accountCacheFresh(localStorage.getItem("pfAccountsAt"), Date.now());
+}
+
+function loadPfExternalCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("pfExternalTxs") || "[]");
+    if (!Array.isArray(parsed)) return [];
+    if (parsed.length && !localStorage.getItem("pfExternalTxsAt")) localStorage.setItem("pfExternalTxsAt", String(Date.now()));
+    return parsed;
+  } catch (error) {
+    return [];
+  }
+}
+
+function pfExternalCacheStale() {
+  if (!localStorage.getItem("pfExternalTxsAt")) return true;
+  return !PfPro.accountCacheFresh(localStorage.getItem("pfExternalTxsAt"), Date.now());
+}
+
+function storePfExternalCache(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  localStorage.setItem("pfExternalTxs", JSON.stringify(list));
+  localStorage.setItem("pfExternalTxsAt", String(Date.now()));
+  state.pfExternalRaw = list;
+  return list;
+}
+
+function clearPfExternalCache() {
+  localStorage.removeItem("pfExternalTxs");
+  localStorage.removeItem("pfExternalTxsAt");
+  state.pfExternalRaw = [];
 }
 
 function storePfAccounts(list) {
@@ -2363,13 +2444,14 @@ async function enqueuePfRepay(plan, note) {
   });
 }
 
-async function pfGet(q, creds) {
+async function pfGet(q, creds, extra) {
   const auth = pfCreds(creds);
   const problem = PfPro.endpointError(auth.url, auth.token);
   if (problem) throw new Error(problem);
   const url = new URL(auth.url);
   url.searchParams.set("q", q);
   url.searchParams.set("token", auth.token);
+  if (extra && extra.limit != null && extra.limit !== "") url.searchParams.set("limit", String(extra.limit));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PfPro.PF_GET_TIMEOUT_MS);
   let response;
@@ -2581,6 +2663,25 @@ function warmPf() {
   pfGet("health").catch(() => {});
 }
 
+let pfExternalRefresh = null;
+function refreshPfExternalSoon() {
+  if (pfExternalRefresh || state.mode !== "pfpro" || !navigator.onLine || !pfExternalCacheStale()) return;
+  const auth = pfCreds();
+  if (PfPro.endpointError(auth.url, auth.token)) return;
+  pfExternalRefresh = fetchPfExternal().catch(() => {}).finally(() => {
+    pfExternalRefresh = null;
+    if (state.overlay) renderChrome();
+    else render();
+  });
+}
+
+async function fetchPfExternal() {
+  if (state.mode !== "pfpro" || !navigator.onLine) return state.pfExternalRaw || [];
+  const data = await pfGet("transactions", null, { limit: 200 });
+  if (!data || !Array.isArray(data.transactions)) return state.pfExternalRaw || [];
+  return storePfExternalCache(data.transactions);
+}
+
 async function refreshPf(options) {
   if (state.mode !== "pfpro") return;
   const forceAccounts = !!(options && options.accounts);
@@ -2592,10 +2693,12 @@ async function refreshPf(options) {
     if (!state.pending && !(flushed && flushed.permanent)) state.loadError = "";
   } catch (error) {
     state.loadError = messageOf(error);
-  } finally {
-    state.syncing = false;
-    render();
   }
+  if (navigator.onLine && (forceAccounts || pfExternalCacheStale())) {
+    try { await fetchPfExternal(); } catch (error) {}
+  }
+  state.syncing = false;
+  render();
 }
 
 function renderPfForm() {
@@ -2671,8 +2774,10 @@ async function connectPfFromForm() {
     state.tab = "ledger";
     show("");
     toast("已連上 PF Pro。可記帳帳戶 " + PfPro.payAccounts(list).length + " 個");
+    localStorage.removeItem("pfExternalTxsAt");
     render();
     schedulePfFlush();
+    refreshPfExternalSoon();
   } catch (error) {
     show(messageOf(error));
   }
@@ -2687,6 +2792,7 @@ function disconnectPf() {
   localStorage.removeItem("pfAccounts");
   localStorage.removeItem("pfAccountsAt");
   state.pfAccounts = [];
+  clearPfExternalCache();
   state.loadError = "";
   if (sheetUrl && sheetToken) {
     state.mode = "cloud";
@@ -2867,6 +2973,10 @@ function defaultAccountId(tx) {
 }
 
 function openForm(tx, preset) {
+  if (tx && (tx.pfExternal || isPfExternalUid(tx.uid))) {
+    openDetail(tx.uid);
+    return;
+  }
   const fallback = defaultAccountId(tx);
   const kind = tx ? tx.type : activeKind();
   const remembered = tx ? null : lastCategory(kind);
@@ -3525,6 +3635,7 @@ async function saveForm() {
 }
 
 async function removeTx(uid) {
+  if (isPfExternalUid(uid) || (findLedgerTx(uid) || {}).pfExternal) return;
   if (!window.confirm("刪除這筆帳？")) return;
   const result = await commit({ op: "deleteTx", uid: uid });
   state.overlay = null;
@@ -3786,8 +3897,19 @@ function detailRow(label, value) {
 }
 
 function renderDetail(uid) {
-  const tx = state.data.transactions.find((item) => item.uid === String(uid));
+  const tx = findLedgerTx(uid);
   if (!tx) return sheetFrame("明細", el("p", {}, "找不到這筆帳"));
+  if (tx.pfExternal) {
+    return sheetFrame("這一筆", el("div", {},
+      el("p", { class: "hero-num " + tx.type }, (tx.type === "income" ? "＋" : "") + formatMoney(tx.amount), el("span", { class: "unit" }, "元")),
+      el("p", {}, el("span", { class: "tx-badge" }, "記帳署")),
+      detailRow("類型", tx.type === "income" ? "收入" : "支出"),
+      detailRow("分類", tx.externalTitle),
+      detailRow("日期", tx.date ? formatDayLabel(tx.date) + " " + weekday(tx.date) : ""),
+      detailRow("帳戶", displayAccountName(tx.accountId)),
+      detailRow("備註", tx.memo),
+      el("p", { class: "muted" }, "這筆由記帳署寫入 PF Pro。這裡只顯示，不會改、不會刪，也不會寫進試算表。")));
+  }
   const items = state.data.receiptItems.filter((item) => String(item.invoiceId) === String(tx.invoiceId || ""));
   const main = categoryByLevel(state.data, tx.class1, "1");
   const sub = categoryByLevel(state.data, tx.class2, "2");
@@ -4200,6 +4322,7 @@ async function boot() {
   else if (savedMode === "local") state.mode = "local";
   else state.mode = "unset";
   state.pfAccounts = loadPfAccountCache();
+  state.pfExternalRaw = loadPfExternalCache();
   state.pending = state.mode === "pfpro" ? (state.pfQueueBoot || 0) : (state.sheetPending || 0);
   focusDay(localISODate(new Date()));
   state.booting = false;
@@ -4248,6 +4371,7 @@ window.addEventListener("offline", () => { state.online = false; render(); });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible" || state.mode !== "pfpro") return;
   warmPf();
+  refreshPfExternalSoon();
   if (state.pending) schedulePfFlush();
 });
 window.addEventListener("error", (event) => {
