@@ -50,10 +50,13 @@
     { mains: "禮物", subs: "", subHas: "", action: "expense", category: "人情禮物", note: "" },
     { mains: "手機電腦", subs: "", subHas: "", action: "expense", category: "3C通訊", note: "" },
     { mains: "工作", subs: "", subHas: "", action: "expense", category: "工作", note: "" },
-    { mains: "薪水獎金,薪資,薪水,投資,投資收入,轉帳", subs: "", subHas: "", action: "block", category: "", note: "薪資與投資由 PF Pro 銀行或交易端記，這裡不寫入。轉帳請用「繳卡費」。" }
+    { mains: "薪水獎金,薪資,薪水,獎金", subs: "獎金", subHas: "", action: "income", category: "獎金", note: "" },
+    { mains: "獎金", subs: "", subHas: "", action: "income", category: "獎金", note: "" },
+    { mains: "薪水獎金,薪資,薪水", subs: "", subHas: "", action: "income", category: "薪資", note: "" },
+    { mains: "投資,投資收入,轉帳", subs: "", subHas: "", action: "block", category: "", note: "投資由 PF Pro 交易端記，這裡不寫入。轉帳請用「繳卡費」。" }
   ];
 
-  var BLOCK_NOTE = "薪資、投資不寫入 PF Pro。轉帳不是支出；繳信用卡請用「繳卡費」。";
+  var BLOCK_NOTE = "薪資、獎金會寫進你選的帳戶。投資不寫入 PF Pro。轉帳不是支出；繳信用卡請用「繳卡費」。";
   var PAY_TYPES = { cash_wallet: 1, credit_card: 1, bank_cash: 1, bank_fx: 1 };
   var AR_FRIENDS = "ACC-AR-FRIENDS";
   var AR_FRIENDS_NAME = "朋友代墊（應收）";
@@ -801,6 +804,113 @@
     flag: "pfFix-cc-nmvgvexe3bz6h5-r3"
   };
 
+  var SALARY_NAMES = ["薪水獎金", "薪資", "薪水", "獎金"];
+  var SALARY_SYNC_FLAG = "pfSalarySync-20261021";
+
+  function categoryLabel(categories, id, level) {
+    var i;
+    var cat;
+    if (id == null || id === "") return "";
+    for (i = 0; i < (categories || []).length; i++) {
+      cat = categories[i];
+      if (!cat) continue;
+      if (String(cat.id) === String(id) && String(cat.level) === String(level)) return String(cat.name || "");
+    }
+    return "";
+  }
+
+  function txLabels(tx, categories) {
+    var row = tx || {};
+    var main = row.mainName != null && String(row.mainName) !== "" ? String(row.mainName) : categoryLabel(categories, row.class1, "1");
+    var sub = row.subName != null && String(row.subName) !== "" ? String(row.subName) : categoryLabel(categories, row.class2, "2");
+    return { main: main, sub: sub };
+  }
+
+  function isSalaryName(value) {
+    return SALARY_NAMES.indexOf(normName(value)) >= 0;
+  }
+
+  function isSalaryIncome(mainName, subName) {
+    return isSalaryName(mainName) || isSalaryName(subName);
+  }
+
+  function cloneMeta(metaIn) {
+    var meta = {};
+    var source = metaIn && typeof metaIn === "object" ? metaIn : {};
+    Object.keys(source).forEach(function (key) {
+      var value = source[key];
+      if (value && typeof value === "object") {
+        var copy = {};
+        Object.keys(value).forEach(function (field) { copy[field] = value[field]; });
+        meta[key] = copy;
+      } else meta[key] = value;
+    });
+    return meta;
+  }
+
+  /* 一次性：開放薪資同步前已在帳上的薪水／獎金只做記號，不放進佇列。
+     之後新增，或 modifiedAt 與記號不同（有改過），才同步。 */
+  function migrateSalaryHold(input) {
+    var state = input || {};
+    var queueIn = Array.isArray(state.queue) ? state.queue : [];
+    var meta = cloneMeta(state.meta);
+    var categories = state.categories || [];
+    var txIn = Array.isArray(state.transactions) ? state.transactions : [];
+    var changed = false;
+    txIn.forEach(function (tx) {
+      if (!tx || !tx.uid) return;
+      var labels = txLabels(tx, categories);
+      if (!isSalaryIncome(labels.main, labels.sub)) return;
+      var uid = String(tx.uid);
+      var prev = meta[uid] || {};
+      if (prev.salaryHold) return;
+      var next = {};
+      Object.keys(prev).forEach(function (field) { next[field] = prev[field]; });
+      next.salaryHold = true;
+      next.salaryHoldAt = String(tx.modifiedAt || tx.createdAt || "");
+      meta[uid] = next;
+      changed = true;
+    });
+    return {
+      queue: queueIn.slice(),
+      meta: meta,
+      transactions: txIn.slice(),
+      changed: changed,
+      flag: SALARY_SYNC_FLAG
+    };
+  }
+
+  function salarySyncable(tx, meta, categories) {
+    if (!tx) return true;
+    var labels = txLabels(tx, categories);
+    if (!isSalaryIncome(labels.main, labels.sub)) return true;
+    var uid = tx.uid ? String(tx.uid) : "";
+    var prev = meta && uid ? meta[uid] : null;
+    if (!prev || !prev.salaryHold) return true;
+    var modified = String(tx.modifiedAt || "");
+    if (!modified) return false;
+    return modified !== String(prev.salaryHoldAt || "");
+  }
+
+  function stampSalaryEdit(meta, tx, categories) {
+    var source = meta && typeof meta === "object" ? meta : {};
+    if (!tx || !salarySyncable(tx, source, categories)) return source;
+    var labels = txLabels(tx, categories);
+    if (!isSalaryIncome(labels.main, labels.sub)) return source;
+    var uid = tx.uid ? String(tx.uid) : "";
+    var prev = uid ? source[uid] : null;
+    if (!prev || !prev.salaryHold) return source;
+    var modified = String(tx.modifiedAt || "");
+    if (!modified || modified === String(prev.salaryHoldAt || "")) return source;
+    var nextMeta = cloneMeta(source);
+    var next = {};
+    Object.keys(prev).forEach(function (field) { next[field] = prev[field]; });
+    next.salaryHold = true;
+    next.salaryHoldAt = modified;
+    nextMeta[uid] = next;
+    return nextMeta;
+  }
+
   function migrateStuckReplace(input) {
     var state = input || {};
     var queueIn = Array.isArray(state.queue) ? state.queue : [];
@@ -882,8 +992,21 @@
     var transfer = plan("金融財經", "轉帳");
     check("轉帳擋下", !transfer.ok && transfer.error.indexOf("繳卡費") >= 0, transfer.error);
     check("金融其他擋下", !plan("金融財經", "其他").ok);
-    check("薪資擋下", mainHidden("薪水獎金") && !plan("薪水獎金", "薪水", { type: "income" }).ok);
-    check("投資擋下", mainHidden("投資") && !resolveCategory("投資", "股票", "income").ok);
+    function incomePlan(main, sub, amount, accountId) {
+      return plan(main, sub, { type: "income", amount: amount, accountId: accountId, memo: "" });
+    }
+    function mapsIncome(result, category, amount, accountId) {
+      return !!(result.ok && result.action === "add_transaction" && result.data.txn_type === "income" && result.data.category === category && result.data.amount === amount && result.data.amount > 0 && result.data.flow_class === "external" && result.data.account_id === accountId);
+    }
+    var pay = incomePlan("薪資", "薪水", 52000, "ACC-FUBON-TWD");
+    var payMain = incomePlan("薪水", "", 52000, "ACC-FUBON-TWD");
+    var payGroup = incomePlan("薪水獎金", "月薪", 48000, "ACC-CASH-TWD");
+    check("薪資擋下", mapsIncome(pay, "薪資", 52000, "ACC-FUBON-TWD") && mapsIncome(payMain, "薪資", 52000, "ACC-FUBON-TWD") && mapsIncome(payGroup, "薪資", 48000, "ACC-CASH-TWD") && !mainHidden("薪資") && !mainHidden("薪水") && !mainHidden("薪水獎金") && !subHidden("薪資", "薪水"), JSON.stringify(pay.data || pay));
+    var bonus = incomePlan("薪資", "獎金", 8000, "ACC-FUBON-TWD");
+    var bonusMain = incomePlan("獎金", "", 3000, "ACC-CASH-TWD");
+    var bonusGroup = incomePlan("薪水獎金", "獎金", 12000, "ACC-CASH-TWD");
+    check("獎金", mapsIncome(bonus, "獎金", 8000, "ACC-FUBON-TWD") && mapsIncome(bonusMain, "獎金", 3000, "ACC-CASH-TWD") && mapsIncome(bonusGroup, "獎金", 12000, "ACC-CASH-TWD") && !mainHidden("獎金") && !subHidden("薪資", "獎金") && !subHidden("薪水獎金", "獎金"), JSON.stringify(bonus.data || bonus));
+    check("投資擋下", mainHidden("投資") && mainHidden("投資收入") && mainHidden("轉帳") && !resolveCategory("投資", "股票", "income").ok && !resolveCategory("投資收入", "", "income").ok);
     check("餐費仍顯示", !mainHidden("餐費") && !mainHidden("金融財經"));
     check("子類轉帳隱藏", subHidden("金融財經", "轉帳") && !subHidden("金融財經", "樂透"));
     var work = plan("工作", "應酬", { memo: "客戶", reimburse: true, amount: 800 });
@@ -1039,6 +1162,33 @@
     var stuckAgain = migrateStuckReplace({ queue: stuck.queue, meta: stuck.meta, transactions: stuck.transactions });
     var stuckEmpty = migrateStuckReplace({ queue: [], meta: {}, transactions: [] });
     check("卡住的 r3 遷移", stuck.changed && stuck.queue.length === 1 && stuck.queue[0].requestId === "cc-keep" && stuck.meta.nmvgvexe3bz6h5.txnId === "TX-20261020-2a94f3" && stuck.meta.nmvgvexe3bz6h5.friendName === "小明" && stuck.meta.nmvgvexe3bz6h5.rev === 2 && stuck.meta.other.txnId === "TX-KEEP" && stuck.transactions[0].accountId === "ACC-FUBON-TWD" && stuck.transactions[0].amount === 80 && stuck.transactions[1].accountId === "cash" && stuck.flag === "pfFix-cc-nmvgvexe3bz6h5-r3" && !stuckAgain.changed && stuckAgain.meta.nmvgvexe3bz6h5.txnId === "TX-20261020-2a94f3" && stuckEmpty.transactions.length === 0 && stuckEmpty.queue.length === 0 && stuckEmpty.meta.nmvgvexe3bz6h5.txnId === "TX-20261020-2a94f3", JSON.stringify(stuck));
+    var salaryCats = [
+      { id: "salary", level: "1", name: "薪資" },
+      { id: "pay", level: "2", name: "薪水" },
+      { id: "bonus", level: "2", name: "獎金" },
+      { id: "food", level: "1", name: "餐費" }
+    ];
+    var oldSalary = { uid: "old-salary", class1: "salary", class2: "pay", modifiedAt: "2026-08-01 09:00:00", createdAt: "2026-08-01 09:00:00", amount: 48000 };
+    var oldBonus = { uid: "old-bonus", mainName: "薪資", subName: "獎金", modifiedAt: "2026-07-01 09:00:00", createdAt: "2026-07-01 09:00:00" };
+    var oldLunch = { uid: "lunch", class1: "food", modifiedAt: "2026-08-02 09:00:00" };
+    var oldInvest = { uid: "inv", mainName: "投資", subName: "股票", modifiedAt: "2026-08-03 09:00:00" };
+    var seedQueue = [{ requestId: "cc-keep", uid: "keep", action: "add_transaction" }];
+    var heldSalary = migrateSalaryHold({
+      queue: seedQueue,
+      meta: { keep: { txnId: "TX-KEEP", rev: 1 } },
+      transactions: [oldSalary, oldBonus, oldLunch, oldInvest],
+      categories: salaryCats
+    });
+    var editedSalary = { uid: "old-salary", class1: "salary", class2: "pay", modifiedAt: "2026-10-21T09:00:00+08:00", createdAt: "2026-08-01 09:00:00" };
+    var stampedSalary = stampSalaryEdit(heldSalary.meta, editedSalary, salaryCats);
+    var heldAgain = migrateSalaryHold({
+      queue: heldSalary.queue,
+      meta: heldSalary.meta,
+      transactions: [oldSalary, oldBonus, oldLunch, oldInvest],
+      categories: salaryCats
+    });
+    var freshSalary = { uid: "new-salary", class1: "salary", class2: "pay", modifiedAt: "2026-10-21T10:00:00+08:00" };
+    check("舊薪資不入列", heldSalary.changed && heldSalary.queue.length === 1 && heldSalary.queue[0].requestId === "cc-keep" && seedQueue.length === 1 && heldSalary.meta.keep.txnId === "TX-KEEP" && heldSalary.meta["old-salary"].salaryHold === true && heldSalary.meta["old-salary"].salaryHoldAt === "2026-08-01 09:00:00" && heldSalary.meta["old-bonus"].salaryHold === true && !(heldSalary.meta.lunch && heldSalary.meta.lunch.salaryHold) && !heldSalary.meta.inv && !salarySyncable(oldSalary, heldSalary.meta, salaryCats) && !salarySyncable(oldBonus, heldSalary.meta, salaryCats) && !salarySyncable({ uid: "old-salary", class1: "salary", class2: "pay", modifiedAt: "" }, heldSalary.meta, salaryCats) && salarySyncable(oldLunch, heldSalary.meta, salaryCats) && salarySyncable(editedSalary, heldSalary.meta, salaryCats) && salarySyncable(freshSalary, heldSalary.meta, salaryCats) && stampedSalary["old-salary"].salaryHoldAt === "2026-10-21T09:00:00+08:00" && !salarySyncable(editedSalary, stampedSalary, salaryCats) && heldSalary.meta["old-salary"].salaryHoldAt === "2026-08-01 09:00:00" && !heldAgain.changed && heldAgain.queue.length === 1 && heldAgain.meta["old-salary"].salaryHoldAt === "2026-08-01 09:00:00" && heldSalary.flag === "pfSalarySync-20261021", JSON.stringify({ queue: heldSalary.queue, salary: heldSalary.meta["old-salary"], bonus: heldSalary.meta["old-bonus"] }));
 
     return { ok: cases.every(function (item) { return item.ok; }), cases: cases };
   }
@@ -1075,6 +1225,9 @@
     explainError: explainError,
     permanentRejection: permanentRejection,
     migrateStuckReplace: migrateStuckReplace,
+    migrateSalaryHold: migrateSalaryHold,
+    salarySyncable: salarySyncable,
+    stampSalaryEdit: stampSalaryEdit,
     txnIdFromResponse: txnIdFromResponse,
     queueWrite: queueWrite,
     queueVoid: queueVoid,

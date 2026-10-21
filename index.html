@@ -332,9 +332,9 @@
 </div>
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
-<script src="pfpro.js?v=20261021-0145"></script>
+<script src="pfpro.js?v=20261021-0815"></script>
 <script>
-const APP_VERSION = "20261021-0145";
+const APP_VERSION = "20261021-0815";
 const REQUIRES_BACKEND = "20261020-1715";
 
 /*__PURE_START__*/
@@ -1783,6 +1783,11 @@ async function enqueue(op) {
 
 async function commit(op) {
   if (state.mode === "pfpro" && op.op === "upsertTx") {
+    if (!PfPro.salarySyncable(op.row, loadPfMeta(), state.data.categories)) {
+      applyOp(state.data, op);
+      await saveSnapshot();
+      return { queued: false, optimistic: false };
+    }
     if (pfEntryUsesSplit(op.row)) {
       const plan = previewPfSplit(op.row);
       if (!plan.ok) throw new Error(plan.error);
@@ -1956,6 +1961,10 @@ function rememberPfTxn(uid, txnId, requestId, reimburse) {
   if (prev.friendName) next.friendName = prev.friendName;
   if (prev.advance) next.advance = prev.advance;
   if (prev.adv) next.adv = prev.adv;
+  if (prev.salaryHold) {
+    next.salaryHold = true;
+    next.salaryHoldAt = prev.salaryHoldAt || "";
+  }
   meta[uid] = next;
   savePfMeta(meta);
 }
@@ -2120,11 +2129,19 @@ async function readPfQueue() {
   return (await kvGet("pfQueue")) || [];
 }
 
+function stampSalaryAfterWrite(row) {
+  const current = loadPfMeta();
+  const stamped = PfPro.stampSalaryEdit(current, row, state.data.categories);
+  if (stamped !== current) savePfMeta(stamped);
+}
+
 async function enqueuePfTx(row, reimburse) {
   const plan = previewPfTx(row, reimburse);
   if (!plan.ok) throw new Error(plan.error);
   await withPfLock(async () => {
-    const meta = loadPfMeta()[row.uid] || {};
+    const all = loadPfMeta();
+    if (!PfPro.salarySyncable(row, all, state.data.categories)) return;
+    const meta = all[row.uid] || {};
     const rev = (meta.rev || 0) + 1;
     const requestId = meta.txnId || meta.rev ? ("cc-" + row.uid + "-r" + rev) : plan.requestId;
     const queue = await readPfQueue();
@@ -2140,11 +2157,14 @@ async function enqueuePfTx(row, reimburse) {
     rememberPfTxn(row.uid, meta.txnId || "", op.requestId, !!reimburse);
     await kvSet("pfQueue", next);
     state.pending = next.length;
+    stampSalaryAfterWrite(row);
   });
 }
 
 async function enqueuePfLegs(row, plan) {
   await withPfLock(async () => {
+    const gate = loadPfMeta();
+    if (!PfPro.salarySyncable(row, gate, state.data.categories)) return;
     let queue = await readPfQueue();
     const meta = loadPfMeta()[row.uid] || {};
     const wantAdv = plan.legs.some((leg) => leg.leg === "adv");
@@ -2222,6 +2242,10 @@ async function enqueuePfLegs(row, plan) {
       stored.friendName = plan.friendName;
       stored.advance = plan.advance;
     }
+    if (prev.salaryHold) {
+      stored.salaryHold = true;
+      stored.salaryHoldAt = prev.salaryHoldAt || "";
+    }
     if (wantAdv) {
       stored.adv = {
         txnId: (meta.adv && meta.adv.txnId) || "",
@@ -2233,6 +2257,7 @@ async function enqueuePfLegs(row, plan) {
     savePfMeta(all);
     await kvSet("pfQueue", queue);
     state.pending = queue.length;
+    stampSalaryAfterWrite(row);
     if (wantAdv && stored.adv) {
       pushPayLog({
         kind: "advance",
@@ -2596,7 +2621,9 @@ function renderPfCard() {
     el("h2", {}, "PF Pro"),
     el("p", { class: "muted" }, state.mode === "pfpro"
       ? ("已連線。可記帳帳戶 " + count + " 個（現金、銀行、信用卡）。手機上原來的明細會留著，不會整批寫進 PF Pro。刪除只作廢 PF Pro 裡對應的那一筆。")
-      : "填好之後，新的支出、手續費、代墊和繳卡費會寫進 PF Pro。網址和 API key 只留在這台瀏覽器。"),
+      : "填好之後，新的支出、薪資、獎金、手續費、代墊和繳卡費會寫進 PF Pro。網址和 API key 只留在這台瀏覽器。"),
+    el("h2", {}, "薪資、獎金"),
+    el("p", { class: "muted" }, "薪水獎金、薪水、薪資會寫成「薪資」，獎金寫成「獎金」，送進你選的帳戶。這次之前已存在的不會補送。"),
     state.sheetPending ? el("p", { class: "muted" }, "另外還有 " + state.sheetPending + " 筆試算表變更未上傳。改回試算表模式後會補傳。") : null,
     renderPfForm(),
     el("button", { type: "button", class: "secondary", id: "refresh-pf-accounts", onClick: go(() => refreshPf({ accounts: true })) }, "重新讀取帳戶"),
@@ -4129,6 +4156,24 @@ async function applyStuckReplaceFix() {
   localStorage.setItem(migrated.flag, "1");
 }
 
+async function applySalaryHold() {
+  const probe = PfPro.migrateSalaryHold({ queue: [], meta: {}, transactions: [] });
+  if (localStorage.getItem(probe.flag) === "1") return;
+  const queue = (await kvGet("pfQueue")) || [];
+  const migrated = PfPro.migrateSalaryHold({
+    queue: queue,
+    meta: loadPfMeta(),
+    transactions: state.data.transactions,
+    categories: state.data.categories,
+  });
+  if (migrated.changed) {
+    savePfMeta(migrated.meta);
+    await kvSet("pfQueue", migrated.queue);
+    state.pfQueueBoot = migrated.queue.length;
+  }
+  localStorage.setItem(migrated.flag, "1");
+}
+
 async function boot() {
   state.online = navigator.onLine;
   try {
@@ -4141,6 +4186,7 @@ async function boot() {
     pfQueue.forEach((op) => { if (op && op.local) applyOp(state.data, op.local); });
     state.pfQueueBoot = pfQueue.length;
     await applyStuckReplaceFix();
+    await applySalaryHold();
   } catch (error) {
     state.loadError = "讀不到這台手機上的備份";
   }
