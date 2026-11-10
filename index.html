@@ -69,6 +69,15 @@
     width: 44px; height: 44px; border: 0; border-radius: 12px;
     background: rgba(255,255,255,.14); color: white; font-size: 28px; line-height: 1;
   }
+  .monthline.card-month { color: var(--ink); margin: 0 0 4px; }
+  .monthline.card-month h2 { margin: 0; font-size: 18px; font-weight: 700; text-align: center; }
+  .monthline.card-month button { background: var(--bg); color: var(--ink); }
+  .monthline.card-month button:disabled { opacity: .35; }
+  .focusbar { background: var(--blue-soft); border-radius: 16px; padding: 10px 12px; margin: 0 0 12px; }
+  .focusbar p { margin: 0; font-weight: 700; }
+  button.stat-link { width: 100%; border: 0; background: transparent; text-align: left; color: inherit; padding: 0; }
+  #month-stats h3 { margin: 16px 0 8px; font-size: 13px; color: var(--muted); }
+  body:not(.sheet-open) #card-balances .kv { padding-right: 64px; }
   .flags { display: flex; gap: 6px; flex-wrap: wrap; }
   .flags span, .flags .flag { font-size: 12px; background: rgba(255,255,255,.16); border-radius: 999px; padding: 3px 8px; }
   .flags .flag { border: 0; color: white; font-weight: 700; width: auto; min-height: 0; margin: 0; }
@@ -333,9 +342,9 @@
 </div>
 <div id="sheet" hidden></div>
 <div id="toast" hidden role="status" aria-live="polite"></div>
-<script src="pfpro.js?v=20261021-0845"></script>
+<script src="pfpro.js?v=20261110-1023"></script>
 <script>
-const APP_VERSION = "20261021-0845";
+const APP_VERSION = "20261110-1023";
 const REQUIRES_BACKEND = "20261020-1715";
 
 /*__PURE_START__*/
@@ -441,6 +450,25 @@ function taipeiFromUnix(sec) {
   }).formatToParts(new Date(n * 1000));
   const grab = (type) => parts.find((part) => part.type === type).value;
   return grab("year") + "-" + grab("month") + "-" + grab("day") + " " + grab("hour") + ":" + grab("minute") + ":" + grab("second");
+}
+
+function formatTaipeiClock(ms) {
+  const n = Number(ms);
+  if (!n) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(n));
+  const grab = (type) => {
+    const part = parts.find((item) => item.type === type);
+    return part ? part.value : "";
+  };
+  return grab("year") + "/" + grab("month") + "/" + grab("day") + " " + grab("hour") + ":" + grab("minute");
 }
 
 function formatMoney(n) {
@@ -885,7 +913,7 @@ function searchTransactions(data, query) {
   });
   return data.transactions.filter((tx) => {
     const hay = [
-      tx.memo, tx.externalTitle, tx.pfExternal ? "記帳署" : "", tx.amount, tx.date, tx.invoiceId,
+      tx.memo, tx.externalTitle, tx.bookkeeping ? "記帳署" : "", tx.amount, tx.date, tx.invoiceId,
       (categoryByLevel(data, tx.class1, "1") || {}).name,
       (categoryByLevel(data, tx.class2, "2") || {}).name,
       (findById(data.projects, tx.projectId) || {}).name,
@@ -1098,6 +1126,19 @@ const state = {
   repay: null,
   pfAccounts: [],
   pfExternalRaw: [],
+  pfExternalSource: "none",
+  pfExternalError: "",
+  pfExternalAt: "",
+  pfExternalCapped: false,
+  pfExternalLoading: false,
+  pfBalances: [],
+  pfBalancesSource: "none",
+  pfBalancesError: "",
+  pfBalancesAt: "",
+  pfBalancesLoading: false,
+  ledgerBookkeeping: false,
+  ledgerFocus: null,
+  statsMonth: "",
   settingsFocus: "",
   sheetPending: 0,
   booting: true,
@@ -1267,7 +1308,26 @@ function renderBanners() {
       state.mode === "cloud" || state.mode === "pfpro" ? el("button", { type: "button", onClick: go(syncNow) }, "重試") : null));
   }
   if (String(state.data.settings.demo) === "1" && state.mode === "local") box.append(el("div", { class: "banner" }, "這是範例帳，只存在這台手機。"));
+  const pfRead = renderPfReadBanner();
+  if (pfRead) box.append(pfRead);
   return box;
+}
+
+function renderPfReadBanner() {
+  if (state.mode !== "pfpro") return null;
+  const failed = !!state.pfExternalError;
+  const usingCache = state.pfExternalSource === "cache";
+  const missing = state.pfExternalSource !== "fresh" && !(state.pfExternalRaw || []).length;
+  if (!failed && !usingCache && !missing) return null;
+  const clock = formatTaipeiClock(state.pfExternalAt);
+  const when = clock ? clock + " 的快取（台北時間）" : "這台手機上的快取";
+  let text = "正在顯示 " + when + "。";
+  if (failed && usingCache) text = "PF Pro 明細讀取失敗，改顯示 " + when + "。" + (state.pfExternalError && state.pfExternalError !== "沒有網路" ? "（" + state.pfExternalError + "）" : "");
+  else if (failed) text = "PF Pro 明細讀取失敗" + (state.pfExternalError ? "：" + state.pfExternalError : "") + "。這台手機沒有可用的快取。";
+  else if (missing) text = state.pfExternalError || "還沒讀到 PF Pro 明細。";
+  return el("div", { class: failed ? "banner bad" : "banner", id: "pf-read-banner" },
+    text,
+    el("button", { type: "button", id: "pf-read-refresh", onClick: go(reloadPfReads) }, state.pfExternalLoading ? "讀取中…" : "重新讀取"));
 }
 
 function overlayKey() {
@@ -1358,11 +1418,18 @@ function renderApiForm() {
 }
 
 function renderLedgerShell() {
+  const focus = state.ledgerFocus && state.ledgerFocus.month ? state.ledgerFocus : null;
   return el("div", {},
     state.mode === "pfpro" ? el("div", { class: "card" },
-      el("p", { class: "muted" }, "週檢視是這台手機記下來的帳。新的支出會另寫進 PF Pro，不會把舊帳整批補傳。幫朋友代墊的部分不算進自己的支出。"),
+      el("p", { class: "muted" }, "週檢視是這台手機記下來的帳。新的支出會另寫進 PF Pro，不會把舊帳整批補傳。幫朋友代墊的部分不算進自己的支出。從 PF Pro 讀入的帳只顯示，不會寫進試算表。"),
+      el("p", { class: "muted" }, "「記帳署」只標在記帳署自己寫的帳。其他從 PF Pro 讀進來的帳不會掛這個標。"),
+      state.pfExternalCapped ? el("p", { class: "muted", id: "pf-cap-note" }, "PF Pro 這次只讀最近 200 筆，更早的帳可能沒有出現。") : null,
+      el("button", { type: "button", class: "secondary", id: "reload-pf-reads", onClick: go(reloadPfReads) }, state.pfExternalLoading ? "讀取中…" : "重新讀取明細"),
       el("button", { type: "button", class: "secondary", id: "pay-card", onClick: openCardPay }, "繳卡費"),
       el("button", { type: "button", class: "secondary", id: "repay-friend", onClick: openRepay }, "朋友還錢")) : null,
+    focus ? el("div", { class: "focusbar", id: "ledger-focus" },
+      el("p", {}, monthTitle(focus.month) + (focus.label ? " · " + focus.label : "")),
+      el("button", { type: "button", class: "textish", id: "clear-ledger-focus", onClick: () => { state.ledgerFocus = null; focusDay(localISODate(new Date())); render(); } }, "清除，回到今天")) : null,
     el("div", { id: "weekbar", class: "weekbar" }),
     el("div", { id: "summary" }),
     el("div", { class: "chips", id: "kind-filter" }, ["expense", "income"].map((kind) => {
@@ -1371,7 +1438,10 @@ function renderLedgerShell() {
         type: "button", class: "chip", "aria-pressed": activeKind() === kind ? "true" : "false",
         onClick: () => { state.ledgerKind = kind; render(); },
       }, label);
-    })),
+    }), state.mode === "pfpro" ? el("button", {
+      type: "button", class: "chip", id: "bookkeeping-filter", "aria-pressed": state.ledgerBookkeeping ? "true" : "false",
+      onClick: () => { state.ledgerBookkeeping = !state.ledgerBookkeeping; render(); },
+    }, "記帳署") : null),
     el("div", { class: "search" }, el("input", {
       id: "q", type: "search", placeholder: "搜尋備註、分類、金額、發票品項", value: state.query,
       autocomplete: "off", enterkeyhint: "search", "aria-label": "搜尋",
@@ -1419,17 +1489,35 @@ function findLedgerTx(uid) {
   return ledgerTransactions().find((item) => item.uid === String(uid)) || null;
 }
 
+function bookkeepingOnly() {
+  return state.mode === "pfpro" && !!state.ledgerBookkeeping;
+}
+
+function txInFocus(tx) {
+  const focus = state.ledgerFocus;
+  if (!focus || !focus.month) return true;
+  if (String(tx.date || "").slice(0, 7) !== focus.month) return false;
+  if (focus.accountId && String(tx.accountId) !== String(focus.accountId)) return false;
+  if (focus.category && window.PfPro && PfPro.spendCategory(tx, state.data.categories) !== focus.category) return false;
+  return true;
+}
+
 function visibleTransactions() {
   const kind = activeKind();
   const query = state.query.trim();
+  const focus = !!(state.ledgerFocus && state.ledgerFocus.month);
+  const match = (tx) => tx.type === kind && (!bookkeepingOnly() || tx.bookkeeping) && txInFocus(tx);
   if (query) {
     const view = searchLimited(ledgerData(), query, 300);
-    const rows = view.rows.filter((tx) => tx.type === kind);
-    return { rows: rows, total: rows.length, truncated: view.truncated && rows.length >= 300 };
+    const rows = view.rows.filter(match);
+    return { rows: rows, total: rows.length, truncated: view.truncated && rows.length >= 300, focused: focus };
   }
-  const day = state.day || localISODate(new Date());
-  const rows = ledgerTransactions().filter((tx) => tx.date === day && tx.type === kind);
-  return { rows: rows, total: rows.length, truncated: false };
+  let rows = ledgerTransactions().filter(match);
+  if (!focus) {
+    const day = state.day || localISODate(new Date());
+    rows = rows.filter((tx) => tx.date === day);
+  }
+  return { rows: rows, total: rows.length, truncated: false, focused: focus };
 }
 
 function dayHeading(date) {
@@ -1447,10 +1535,11 @@ function paintLedger() {
   const week = document.getElementById("weekbar");
   if (!summary || !list) return;
   const searching = !!state.query.trim();
+  const focused = !!(state.ledgerFocus && state.ledgerFocus.month);
   if (week) {
-    week.hidden = searching;
+    week.hidden = searching || focused;
     week.replaceChildren();
-    if (!searching) week.append(renderWeek());
+    if (!searching && !focused) week.append(renderWeek());
   }
   const summaryNode = renderSummary();
   summary.replaceChildren();
@@ -1467,7 +1556,9 @@ function renderWeek() {
   const labels = ["一", "二", "三", "四", "五", "六", "日"];
   const marked = {};
   ledgerTransactions().forEach((tx) => {
-    if (tx.type === kind && tx.date) marked[tx.date] = true;
+    if (tx.type !== kind || !tx.date) return;
+    if (bookkeepingOnly() && !tx.bookkeeping) return;
+    marked[tx.date] = true;
   });
   return el("div", {},
     el("div", { class: "weekrow" },
@@ -1509,6 +1600,14 @@ function moveWeek(delta) {
 
 function renderSummary() {
   const view = visibleTransactions();
+  if (state.ledgerFocus && state.ledgerFocus.month && !state.query.trim()) {
+    const total = round2(view.rows.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0));
+    const kindName = activeKind() === "income" ? "收入" : "支出";
+    return el("div", { class: "hero" },
+      el("p", { class: "eyebrow" }, monthTitle(state.ledgerFocus.month) + kindName),
+      el("p", { class: "hero-num " + activeKind() }, formatMoney(total)),
+      el("p", { class: "subline" }, view.total + " 筆"));
+  }
   if (state.query.trim()) {
     return el("div", { class: "hero" },
       el("p", { class: "eyebrow" }, "搜尋" + (activeKind() === "income" ? "收入" : "支出")),
@@ -1532,6 +1631,8 @@ function renderTxList() {
   const day = state.day || localISODate(new Date());
   if (!view.rows.length) {
     if (state.query.trim()) return [el("div", { class: "empty" }, el("p", {}, "沒有符合的帳"), el("p", { class: "muted" }, "試試分類、備註、金額或發票品項，多個詞要同時符合。"))];
+    if (view.focused) return [el("div", { class: "empty" }, el("p", {}, "這個範圍沒有" + (bookkeepingOnly() ? "記帳署的" : "") + (kind === "income" ? "收入" : "支出")), el("p", { class: "muted" }, "可以清除篩選，或換一個月。"))];
+    if (bookkeepingOnly()) return [el("div", { class: "empty" }, el("p", {}, "這天沒有記帳署的" + (kind === "income" ? "收入" : "支出")), el("p", { class: "muted" }, "只列出帳署寫入的帳。"))];
     if (kind === "income") return [el("div", { class: "empty" }, el("p", {}, "這天沒有收入"), el("p", { class: "muted" }, "收入平常收在這裡，打開才看得到。"))];
     const name = ledgerTitle(day);
     return [el("div", { class: "empty" },
@@ -1539,7 +1640,7 @@ function renderTxList() {
       el("p", { class: "muted" }, "用餐、交通，一筆就好。"),
       el("button", { type: "button", class: "primary", id: "empty-add", onClick: () => openForm(null) }, "記一筆"))];
   }
-  if (!state.query.trim()) {
+  if (!state.query.trim() && !view.focused) {
     return view.rows.slice().sort((a, b) => String(b.modifiedAt || "").localeCompare(String(a.modifiedAt || "")) || String(b.uid).localeCompare(String(a.uid))).map(renderTxButton);
   }
   const nodes = [];
@@ -1558,24 +1659,119 @@ function renderTxButton(tx) {
   return el("button", { type: "button", class: "tx", "data-uid": tx.uid, onClick: () => openDetail(tx.uid) },
     el("span", { class: "emoji", "aria-hidden": "true" }, txEmoji(state.data, tx)),
     el("span", { class: "tx-main" },
-      el("span", { class: "tx-title" }, txTitle(state.data, tx), tx.pfExternal ? el("span", { class: "tx-badge" }, "記帳署") : null),
+      el("span", { class: "tx-title" }, txTitle(state.data, tx), tx.bookkeeping ? el("span", { class: "tx-badge" }, "記帳署") : null),
       meta ? el("span", { class: "tx-memo" }, meta) : null),
     el("span", { class: "amt " + tx.type }, (tx.type === "income" ? "＋" : "") + formatMoney(tx.amount)));
+}
+
+function monthTotal(key, kind) {
+  const txs = ledgerTransactions();
+  if (kind === "expense" && window.PfPro) return PfPro.monthSpending(txs, key, state.data.categories).total;
+  return sumMonth(txs, key, kind);
+}
+
+function shiftStatsMonth(delta) {
+  const current = localISODate(new Date()).slice(0, 7);
+  const base = state.statsMonth || current;
+  const next = shiftMonth(base, delta);
+  if (!next || next > current) return;
+  state.statsMonth = next;
+  render();
+}
+
+function openLedgerSlice(filter) {
+  const month = filter && filter.month;
+  if (!month) return;
+  state.ledgerFocus = {
+    month: month,
+    accountId: filter.accountId || "",
+    category: filter.category || "",
+    label: filter.label || "",
+  };
+  state.ledgerKind = "expense";
+  state.ledgerBookkeeping = false;
+  state.query = "";
+  state.tab = "ledger";
+  state.overlay = null;
+  const today = localISODate(new Date());
+  focusDay(month === today.slice(0, 7) ? today : month + "-01");
+  render();
+}
+
+function renderSpendLinks(rows, total, onOpen) {
+  const max = Math.max.apply(null, rows.map((row) => row.amount).concat(1));
+  const base = total || rows.reduce((sum, row) => sum + row.amount, 0) || 1;
+  return el("div", { class: "bars" }, rows.map((row) => el("button", {
+    type: "button",
+    class: "bar-row stat-link",
+    onClick: () => onOpen(row),
+  },
+    el("div", { class: "bar-name" },
+      el("span", {}, row.name),
+      el("span", {}, formatMoney(row.amount) + " · " + Math.round(row.amount / base * 100) + "%")),
+    el("div", { class: "track" }, el("span", { style: "width:" + Math.max(2, row.amount / max * 100) + "%" })))));
+}
+
+function renderCardBalances(month) {
+  if (state.mode !== "pfpro" || !window.PfPro) return null;
+  const cards = PfPro.creditCardBalances({ balances: state.pfBalances || [] });
+  const clock = formatTaipeiClock(state.pfBalancesAt);
+  let note = "";
+  if (state.pfBalancesError && state.pfBalancesSource === "cache") note = "餘額讀取失敗，改顯示" + (clock ? " " + clock + " 的快取（台北時間）" : "快取") + "。";
+  else if (state.pfBalancesError) note = "信用卡餘額讀取失敗：" + state.pfBalancesError;
+  else if (state.pfBalancesSource === "cache" && clock) note = "餘額是 " + clock + " 的快取（台北時間）。";
+  return el("div", { id: "card-balances" },
+    el("h3", {}, "信用卡目前未繳"),
+    note ? el("p", { class: state.pfBalancesError ? "bad" : "muted" }, note) : null,
+    cards.length ? el("div", {}, cards.map((card) => el("button", {
+      type: "button",
+      class: "kv stat-link",
+      onClick: () => openLedgerSlice({ month: month, accountId: card.accountId, label: card.name }),
+    },
+      el("span", {}, card.name),
+      el("strong", {}, card.unpaid > 0 ? "未繳 " + formatMoney(card.unpaid) : (card.credit > 0 ? "溢繳 " + formatMoney(card.credit) : "未繳 0"))))) : el("p", { class: "muted" }, state.pfBalancesLoading ? "正在讀取信用卡餘額…" : "沒有讀到使用中的信用卡。"));
+}
+
+function renderMonthStats() {
+  const current = localISODate(new Date()).slice(0, 7);
+  const key = state.statsMonth && state.statsMonth <= current ? state.statsMonth : current;
+  state.statsMonth = key;
+  const report = window.PfPro ? PfPro.monthSpending(ledgerTransactions(), key, state.data.categories) : null;
+  const total = report ? report.total : monthTotal(key, "expense");
+  const categories = report ? report.categories.filter((row) => row.amount > 0) : [];
+  const accounts = report ? report.accounts.map((row) => ({
+    name: displayAccountName(row.accountId) || "未填帳戶",
+    amount: row.amount,
+    accountId: row.accountId,
+  })) : [];
+  return el("section", { class: "card", id: "month-stats" },
+    el("div", { class: "monthline card-month" },
+      el("button", { type: "button", id: "stats-prev", "aria-label": "上個月", onClick: () => shiftStatsMonth(-1) }, "‹"),
+      el("h2", {}, monthTitle(key)),
+      el("button", { type: "button", id: "stats-next", "aria-label": "下個月", disabled: key >= current ? true : null, onClick: () => shiftStatsMonth(1) }, "›")),
+    el("p", { class: "eyebrow" }, "支出合計"),
+    el("p", { class: "hero-num expense" }, formatMoney(total), el("span", { class: "unit" }, "元")),
+    el("p", { class: "muted" }, "共 " + (report ? report.count : 0) + " 筆。CostCode 的分類會對到 PF Pro 的 17 類。"),
+    state.mode === "pfpro" && state.pfExternalCapped ? el("p", { class: "muted", id: "stats-cap-note" }, "PF Pro 只讀最近 200 筆，更早的帳可能沒算進這個月。") : null,
+    el("h3", {}, "分類"),
+    categories.length ? renderSpendLinks(categories, total, (row) => openLedgerSlice({ month: key, category: row.name, label: row.name })) : el("p", { class: "muted" }, "這個月還沒有支出。"),
+    el("h3", {}, "帳戶"),
+    accounts.length ? renderSpendLinks(accounts, total, (row) => openLedgerSlice({ month: key, accountId: row.accountId, label: row.name })) : el("p", { class: "muted" }, "這個月還沒有支出。"),
+    renderCardBalances(key));
 }
 
 function renderStats() {
   const today = new Date();
   const key = localISODate(today).slice(0, 7);
-  const spent = sumMonth(ledgerTransactions(), key, "expense");
+  const spent = monthTotal(key, "expense");
   const saved = Number(state.data.settings.monthlyBudget) || 0;
   const status = budgetStatus(spent, saved, today);
   const width = saved > 0 ? Math.min(100, Math.max(status.ratio > 0 ? 4 : 0, Math.round(status.ratio * 100))) : 0;
   let hint = "設定每月預算後，這裡會顯示這個月還能花多少。";
   if (saved > 0 && status.over) hint = "已經超出預算 " + formatMoney(spent - saved) + " 元";
   else if (saved > 0) hint = "剩下 " + formatMoney(status.remaining) + " 元 · 含今天還有 " + status.daysLeft + " 天，一天約 " + formatMoney(status.perDay) + " 元";
-  const monthTx = ledgerTransactions().filter((tx) => String(tx.date || "").slice(0, 7) === key && tx.type === state.statsKind);
-  const breaks = categoryBreakdown(state.data, monthTx, state.statsKind);
   return el("div", {},
+    renderMonthStats(),
     el("section", { class: "card" },
       el("h2", {}, monthTitle(key) + "預算"),
       saved > 0 ? el("p", { class: "hero-num" + (status.over ? " expense" : "") }, formatMoney(status.over ? spent - saved : status.remaining), el("span", { class: "unit" }, status.over ? "超出" : "還能花")) : null,
@@ -1591,17 +1787,14 @@ function renderStats() {
           el("button", { type: "button", "aria-pressed": state.statsKind === "expense" ? "true" : "false", onClick: () => { state.statsKind = "expense"; render(); } }, "支出"),
           el("button", { type: "button", "aria-pressed": state.statsKind === "income" ? "true" : "false", onClick: () => { state.statsKind = "income"; render(); } }, "收入"))),
       renderChart(monthKeysLast12(today)),
-      el("p", { class: "muted" }, "點月份會打開那個月的明細。")),
-    el("section", { class: "card" },
-      el("h2", {}, "這個月的" + (state.statsKind === "income" ? "收入" : "支出")),
-      breaks.length ? renderBars(breaks) : el("p", { class: "muted" }, "這個月還沒有這類帳。")));
+      el("p", { class: "muted" }, "點月份會打開那個月的明細。")));
 }
 
 function renderChart(keys) {
   const width = 360;
   const height = 176;
   const kind = state.statsKind === "income" ? "income" : "expense";
-  const values = keys.map((key) => sumMonth(ledgerTransactions(), key, kind));
+  const values = keys.map((key) => monthTotal(key, kind));
   const max = Math.max.apply(null, [1].concat(values));
   const slot = width / keys.length;
   const current = localISODate(new Date()).slice(0, 7);
@@ -1832,7 +2025,7 @@ function isPfExternalUid(uid) {
 
 async function commit(op) {
   const touched = op && (op.uid || (op.row && op.row.uid));
-  if ((op && op.row && op.row.pfExternal) || isPfExternalUid(touched)) throw new Error("記帳署的帳只讀，不會寫進試算表");
+  if ((op && op.row && (op.row.pfExternal || op.row.bookkeeping)) || isPfExternalUid(touched)) throw new Error("這筆從 PF Pro 讀入，只讀，不會寫進試算表");
   if (state.mode === "pfpro" && op.op === "upsertTx") {
     if (!PfPro.salarySyncable(op.row, loadPfMeta(), state.data.categories)) {
       applyOp(state.data, op);
@@ -1992,14 +2185,19 @@ function loadPfExternalCache() {
 
 function pfExternalCacheStale() {
   if (!localStorage.getItem("pfExternalTxsAt")) return true;
-  return !PfPro.accountCacheFresh(localStorage.getItem("pfExternalTxsAt"), Date.now());
+  return !PfPro.externalCacheFresh(localStorage.getItem("pfExternalTxsAt"), Date.now());
 }
 
 function storePfExternalCache(rows) {
   const list = Array.isArray(rows) ? rows : [];
+  const at = String(Date.now());
   localStorage.setItem("pfExternalTxs", JSON.stringify(list));
-  localStorage.setItem("pfExternalTxsAt", String(Date.now()));
+  localStorage.setItem("pfExternalTxsAt", at);
   state.pfExternalRaw = list;
+  state.pfExternalAt = at;
+  state.pfExternalCapped = list.length >= 200;
+  state.pfExternalSource = "fresh";
+  state.pfExternalError = "";
   return list;
 }
 
@@ -2007,6 +2205,47 @@ function clearPfExternalCache() {
   localStorage.removeItem("pfExternalTxs");
   localStorage.removeItem("pfExternalTxsAt");
   state.pfExternalRaw = [];
+  state.pfExternalSource = "none";
+  state.pfExternalError = "";
+  state.pfExternalAt = "";
+  state.pfExternalCapped = false;
+}
+
+function loadPfBalanceCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("pfBalances") || "[]");
+    if (!Array.isArray(parsed)) return [];
+    if (parsed.length && !localStorage.getItem("pfBalancesAt")) localStorage.setItem("pfBalancesAt", String(Date.now()));
+    return parsed;
+  } catch (error) {
+    return [];
+  }
+}
+
+function pfBalanceCacheStale() {
+  if (!(state.pfBalances || []).length) return true;
+  return !PfPro.externalCacheFresh(localStorage.getItem("pfBalancesAt"), Date.now());
+}
+
+function storePfBalances(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const at = String(Date.now());
+  localStorage.setItem("pfBalances", JSON.stringify(list));
+  localStorage.setItem("pfBalancesAt", at);
+  state.pfBalances = list;
+  state.pfBalancesAt = at;
+  state.pfBalancesSource = "fresh";
+  state.pfBalancesError = "";
+  return list;
+}
+
+function clearPfBalanceCache() {
+  localStorage.removeItem("pfBalances");
+  localStorage.removeItem("pfBalancesAt");
+  state.pfBalances = [];
+  state.pfBalancesSource = "none";
+  state.pfBalancesError = "";
+  state.pfBalancesAt = "";
 }
 
 function storePfAccounts(list) {
@@ -2665,26 +2904,68 @@ function warmPf() {
 
 let pfExternalRefresh = null;
 function refreshPfExternalSoon() {
-  if (pfExternalRefresh || state.mode !== "pfpro" || !navigator.onLine || !pfExternalCacheStale()) return;
+  if (pfExternalRefresh || state.mode !== "pfpro" || !navigator.onLine) return;
+  if (!pfExternalCacheStale() && !pfBalanceCacheStale()) return;
   const auth = pfCreds();
   if (PfPro.endpointError(auth.url, auth.token)) return;
-  pfExternalRefresh = fetchPfExternal().catch(() => {}).finally(() => {
+  pfExternalRefresh = Promise.all([
+    pfExternalCacheStale() ? fetchPfExternal().catch((error) => notePfReadFailure(error, "tx")) : null,
+    pfBalanceCacheStale() ? fetchPfBalances().catch((error) => notePfReadFailure(error, "balances")) : null,
+  ]).finally(() => {
     pfExternalRefresh = null;
     if (state.overlay) renderChrome();
     else render();
   });
 }
 
+function notePfReadFailure(error, kind) {
+  const message = messageOf(error);
+  if (kind === "balances") {
+    state.pfBalancesError = message;
+    state.pfBalancesSource = (state.pfBalances || []).length ? "cache" : "none";
+    return;
+  }
+  state.pfExternalError = message;
+  state.pfExternalSource = (state.pfExternalRaw || []).length ? "cache" : "none";
+  state.pfExternalAt = localStorage.getItem("pfExternalTxsAt") || state.pfExternalAt || "";
+  state.pfExternalCapped = (state.pfExternalRaw || []).length >= 200;
+}
+
 async function fetchPfExternal() {
-  if (state.mode !== "pfpro" || !navigator.onLine) return state.pfExternalRaw || [];
+  if (state.mode !== "pfpro") return state.pfExternalRaw || [];
+  if (!navigator.onLine) throw new Error("沒有網路");
   const data = await pfGet("transactions", null, { limit: 200 });
-  if (!data || !Array.isArray(data.transactions)) return state.pfExternalRaw || [];
+  if (!data || !Array.isArray(data.transactions)) throw new Error("PF Pro 沒有回傳明細");
   return storePfExternalCache(data.transactions);
+}
+
+async function fetchPfBalances() {
+  if (state.mode !== "pfpro") return state.pfBalances || [];
+  if (!navigator.onLine) throw new Error("沒有網路");
+  const data = await pfGet("balances");
+  const rows = data && Array.isArray(data.balances) ? data.balances : null;
+  if (!rows) throw new Error("PF Pro 沒有回傳餘額");
+  return storePfBalances(rows);
+}
+
+async function reloadPfReads() {
+  if (state.mode !== "pfpro" || state.pfExternalLoading) return;
+  state.pfExternalLoading = true;
+  state.pfBalancesLoading = true;
+  render();
+  await Promise.all([
+    fetchPfExternal().catch((error) => notePfReadFailure(error, "tx")),
+    fetchPfBalances().catch((error) => notePfReadFailure(error, "balances")),
+  ]);
+  state.pfExternalLoading = false;
+  state.pfBalancesLoading = false;
+  render();
 }
 
 async function refreshPf(options) {
   if (state.mode !== "pfpro") return;
   const forceAccounts = !!(options && options.accounts);
+  const forceReads = !!(options && options.reads);
   state.syncing = true;
   renderChrome();
   try {
@@ -2694,8 +2975,15 @@ async function refreshPf(options) {
   } catch (error) {
     state.loadError = messageOf(error);
   }
-  if (navigator.onLine && (forceAccounts || pfExternalCacheStale())) {
-    try { await fetchPfExternal(); } catch (error) {}
+  if (!navigator.onLine) {
+    if ((state.pfExternalRaw || []).length) {
+      if (state.pfExternalSource !== "fresh") state.pfExternalSource = "cache";
+    } else if (!state.pfExternalError) state.pfExternalError = "沒有網路，這台手機還沒有 PF Pro 明細快取。";
+  } else {
+    const jobs = [];
+    if (forceReads || pfExternalCacheStale()) jobs.push(fetchPfExternal().catch((error) => notePfReadFailure(error, "tx")));
+    if (forceReads || pfBalanceCacheStale()) jobs.push(fetchPfBalances().catch((error) => notePfReadFailure(error, "balances")));
+    if (jobs.length) await Promise.all(jobs);
   }
   state.syncing = false;
   render();
@@ -2793,6 +3081,9 @@ function disconnectPf() {
   localStorage.removeItem("pfAccountsAt");
   state.pfAccounts = [];
   clearPfExternalCache();
+  clearPfBalanceCache();
+  state.ledgerBookkeeping = false;
+  state.ledgerFocus = null;
   state.loadError = "";
   if (sheetUrl && sheetToken) {
     state.mode = "cloud";
@@ -3900,15 +4191,18 @@ function renderDetail(uid) {
   const tx = findLedgerTx(uid);
   if (!tx) return sheetFrame("明細", el("p", {}, "找不到這筆帳"));
   if (tx.pfExternal) {
+    const book = !!tx.bookkeeping;
     return sheetFrame("這一筆", el("div", {},
       el("p", { class: "hero-num " + tx.type }, (tx.type === "income" ? "＋" : "") + formatMoney(tx.amount), el("span", { class: "unit" }, "元")),
-      el("p", {}, el("span", { class: "tx-badge" }, "記帳署")),
+      book ? el("p", {}, el("span", { class: "tx-badge" }, "記帳署")) : null,
       detailRow("類型", tx.type === "income" ? "收入" : "支出"),
       detailRow("分類", tx.externalTitle),
       detailRow("日期", tx.date ? formatDayLabel(tx.date) + " " + weekday(tx.date) : ""),
       detailRow("帳戶", displayAccountName(tx.accountId)),
       detailRow("備註", tx.memo),
-      el("p", { class: "muted" }, "這筆由記帳署寫入 PF Pro。這裡只顯示，不會改、不會刪，也不會寫進試算表。")));
+      el("p", { class: "muted" }, book
+        ? "這筆由記帳署寫入 PF Pro。這裡只顯示，不會改、不會刪，也不會寫進試算表。"
+        : "這筆從 PF Pro 讀入，不是記帳署的帳。這裡只顯示，不會改、不會刪，也不會寫進試算表。")));
   }
   const items = state.data.receiptItems.filter((item) => String(item.invoiceId) === String(tx.invoiceId || ""));
   const main = categoryByLevel(state.data, tx.class1, "1");
@@ -4323,6 +4617,12 @@ async function boot() {
   else state.mode = "unset";
   state.pfAccounts = loadPfAccountCache();
   state.pfExternalRaw = loadPfExternalCache();
+  state.pfExternalAt = localStorage.getItem("pfExternalTxsAt") || "";
+  state.pfExternalCapped = state.pfExternalRaw.length >= 200;
+  state.pfExternalSource = state.pfExternalRaw.length ? "cache" : "none";
+  state.pfBalances = loadPfBalanceCache();
+  state.pfBalancesAt = localStorage.getItem("pfBalancesAt") || "";
+  state.pfBalancesSource = state.pfBalances.length ? "cache" : "none";
   state.pending = state.mode === "pfpro" ? (state.pfQueueBoot || 0) : (state.sheetPending || 0);
   focusDay(localISODate(new Date()));
   state.booting = false;
@@ -4383,6 +4683,9 @@ if (!Element.prototype.replaceChildren) {
     while (this.firstChild) this.removeChild(this.firstChild);
     this.append.apply(this, arguments);
   };
+}
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js?v=" + APP_VERSION, { scope: "./" }).catch(() => {});
 }
 boot().catch((error) => {
   const view = document.getElementById("view");
