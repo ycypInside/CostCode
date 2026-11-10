@@ -498,6 +498,15 @@
     return clock - at < ACCOUNT_TTL_MS;
   }
 
+  var EXTERNAL_TTL_MS = 30 * 60 * 1000;
+
+  function externalCacheFresh(savedAt, now) {
+    var at = Number(savedAt);
+    var clock = Number(now);
+    if (!at || !clock || clock < at) return false;
+    return clock - at < EXTERNAL_TTL_MS;
+  }
+
   function explainError(message, reason) {
     var text = String(message || "").trim();
     var why = String(reason || "").trim();
@@ -962,6 +971,13 @@
   var EXTERNAL_INCOME = { income: 1, dividend: 1, interest: 1 };
   var EXTERNAL_EXPENSE = { expense: 1, fee: 1, tax: 1, loan_interest: 1 };
 
+  function isBookkeepingSource(row) {
+    var requestId = String(row && row.request_id || "").trim();
+    if (requestId.indexOf("bk-") === 0) return true;
+    if (String(row && row.created_by || "").trim() === "記帳署") return true;
+    return String(row && row.description || "").trim().indexOf("[記帳署]") === 0;
+  }
+
   function externalLedgerRows(rows, options) {
     var opts = options || {};
     var remembered = {};
@@ -1006,6 +1022,7 @@
       seen[txnId] = true;
       var category = String(row.category || "").trim();
       var description = String(row.description || "").trim();
+      var bookkeeping = isBookkeepingSource(row);
       out.push({
         uid: "pf:" + txnId,
         date: date,
@@ -1016,15 +1033,131 @@
         class2: "",
         projectId: "",
         memo: description,
-        externalTitle: category || description || "記帳署",
+        externalTitle: category || description || (bookkeeping ? "記帳署" : "PF Pro"),
         invoiceId: "",
         photoFileId: "",
         createdAt: String(row.created_at || ""),
         modifiedAt: String(row.updated_at || row.created_at || ""),
         pfExternal: true,
+        bookkeeping: bookkeeping,
+        pfCategory: category,
+        createdBy: String(row.created_by || "").trim(),
         txnId: txnId,
         requestId: requestId
       });
+    });
+    return out;
+  }
+
+  function categoryName(categories, id, level) {
+    var want = String(level || "");
+    var found = null;
+    (categories || []).forEach(function (cat) {
+      if (!cat || String(cat.id) !== String(id || "")) return;
+      if (want && String(cat.level || "") !== want) return;
+      found = cat;
+    });
+    return found ? String(found.name || "").trim() : "";
+  }
+
+  function bookkeepingCategory(tx) {
+    var fields = [tx && tx.pfCategory, tx && tx.externalTitle, tx && tx.category];
+    var i;
+    for (i = 0; i < fields.length; i++) {
+      var name = String(fields[i] || "").trim();
+      if (PF_CATEGORIES.indexOf(name) >= 0) return name;
+    }
+    return "其他";
+  }
+
+  function spendCategory(tx, categories) {
+    if (!tx || tx.type !== "expense") return "";
+    if (tx.bookkeeping || tx.pfExternal) return bookkeepingCategory(tx);
+    var main = tx.mainName || categoryName(categories, tx.class1, "1");
+    var sub = tx.subName || categoryName(categories, tx.class2, "2");
+    var decision = resolveCategory(main, sub, "expense");
+    if (decision.ok && decision.action === "expense" && PF_CATEGORIES.indexOf(decision.category) >= 0) return decision.category;
+    return "其他";
+  }
+
+  function monthSpending(transactions, monthKey, categories) {
+    var key = String(monthKey || "");
+    var byCat = {};
+    PF_CATEGORIES.forEach(function (name) { byCat[name] = 0; });
+    var byAccount = {};
+    var seenUid = {};
+    var seenTxn = {};
+    var total = 0;
+    var count = 0;
+    (transactions || []).forEach(function (tx) {
+      if (!tx || tx.type !== "expense") return;
+      if (String(tx.date || "").slice(0, 7) !== key) return;
+      var uid = String(tx.uid || "");
+      var txnId = String(tx.txnId || "").trim();
+      if (uid && seenUid[uid]) return;
+      if (txnId && seenTxn[txnId]) return;
+      if (uid) seenUid[uid] = true;
+      if (txnId) seenTxn[txnId] = true;
+      var amount = roundMoney(Math.abs(Number(tx.amount) || 0));
+      if (!(amount > 0)) return;
+      var cat = spendCategory(tx, categories);
+      if (PF_CATEGORIES.indexOf(cat) < 0) cat = "其他";
+      byCat[cat] = roundMoney(byCat[cat] + amount);
+      var accountId = String(tx.accountId || "");
+      if (!byAccount[accountId]) byAccount[accountId] = { accountId: accountId, amount: 0, count: 0 };
+      byAccount[accountId].amount = roundMoney(byAccount[accountId].amount + amount);
+      byAccount[accountId].count += 1;
+      total = roundMoney(total + amount);
+      count += 1;
+    });
+    var categoryRows = PF_CATEGORIES.map(function (name) {
+      return { name: name, amount: byCat[name] || 0 };
+    });
+    var accountRows = Object.keys(byAccount).map(function (id) { return byAccount[id]; });
+    accountRows.sort(function (a, b) {
+      return b.amount - a.amount || String(a.accountId).localeCompare(String(b.accountId));
+    });
+    var categoryTotal = roundMoney(categoryRows.reduce(function (sum, row) { return sum + row.amount; }, 0));
+    var accountTotal = roundMoney(accountRows.reduce(function (sum, row) { return sum + row.amount; }, 0));
+    return {
+      month: key,
+      total: total,
+      count: count,
+      categories: categoryRows,
+      accounts: accountRows,
+      once: categoryTotal === total && accountTotal === total
+    };
+  }
+
+  function creditCardBalances(payload) {
+    var rows = [];
+    if (Array.isArray(payload)) rows = payload;
+    else if (payload && Array.isArray(payload.balances)) rows = payload.balances;
+    var out = [];
+    rows.forEach(function (row) {
+      if (!row || row.is_group) return;
+      if (String(row.type || "") !== "credit_card") return;
+      if (String(row.status || "active") !== "active") return;
+      var id = String(row.account_id || row.id || "").trim();
+      if (!id) return;
+      var currency = String(row.currency || "TWD").trim() || "TWD";
+      var signed = Number(row.balance);
+      if (currency !== "TWD" && row.balance_twd != null && row.balance_twd !== "" && isFinite(Number(row.balance_twd))) {
+        signed = Number(row.balance_twd);
+        currency = "TWD";
+      }
+      if (!isFinite(signed)) signed = 0;
+      out.push({
+        accountId: id,
+        name: String(row.name || id),
+        currency: currency,
+        unpaid: signed < 0 ? roundMoney(Math.abs(signed)) : 0,
+        credit: signed > 0 ? roundMoney(signed) : 0,
+        institution: String(row.institution || "")
+      });
+    });
+    out.sort(function (a, b) {
+      return b.unpaid - a.unpaid || a.name.localeCompare(b.name, "zh-Hant");
     });
     return out;
   }
@@ -1285,7 +1418,66 @@
       if (tx.type === "income") monthIncome += tx.amount;
     });
     var ids = merged.map(function (row) { return row.txnId; });
-    check("記帳署去重", merged.length === 3 && ids.join(",") === "TX-BK,TX-USD,TX-INT" && merged[0].amount === 180 && merged[0].type === "expense" && merged[0].pfExternal === true && merged[0].uid === "pf:TX-BK" && merged[0].externalTitle === "餐飲" && merged[0].memo === "午餐" && merged[1].amount === 320 && merged[2].type === "income" && merged[2].amount === 12 && monthExpense === 590 && monthIncome === 12 && !merged.some(function (row) { return row.txnId === "TX-CC" || row.txnId === "TX-SPLIT" || row.txnId === "TX-KNOWN" || row.txnId === "TX-VOID" || row.txnId === "TX-OTHER" || row.txnId === "TX-XFER"; }), JSON.stringify(merged));
+    check("記帳署去重", merged.length === 3 && ids.join(",") === "TX-BK,TX-USD,TX-INT" && merged[0].amount === 180 && merged[0].type === "expense" && merged[0].pfExternal === true && merged[0].bookkeeping === true && merged[0].uid === "pf:TX-BK" && merged[0].externalTitle === "餐飲" && merged[0].pfCategory === "餐飲" && merged[0].memo === "午餐" && merged[1].amount === 320 && merged[1].bookkeeping === true && merged[2].type === "income" && merged[2].bookkeeping === true && merged[2].amount === 12 && monthExpense === 590 && monthIncome === 12 && !merged.some(function (row) { return row.txnId === "TX-CC" || row.txnId === "TX-SPLIT" || row.txnId === "TX-KNOWN" || row.txnId === "TX-VOID" || row.txnId === "TX-OTHER" || row.txnId === "TX-XFER"; }), JSON.stringify(merged));
+    var identityRows = [
+      { txn_id: "A", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "餐飲", amount: -80, currency: "TWD", flow_class: "external", description: "早餐", status: "active", request_id: "bk-1", created_by: "bot" },
+      { txn_id: "B", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "交通", amount: -40, currency: "TWD", flow_class: "external", description: "公車", status: "active", request_id: "job-2", created_by: "記帳署" },
+      { txn_id: "C", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "其他", amount: -20, currency: "TWD", flow_class: "external", description: "[記帳署] 雜支", status: "active", request_id: "", created_by: "" },
+      { txn_id: "D", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "購物", amount: -15, currency: "TWD", flow_class: "external", description: "記帳署沒有括號", status: "active", request_id: "manual-9", created_by: "我" },
+      { txn_id: "E", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "餐飲", amount: -10, currency: "TWD", flow_class: "external", description: "本機", status: "active", request_id: "cc-keep" },
+      { txn_id: "F", date: "2026-11-02", account_id: AR_FRIENDS, txn_type: "transfer_in", category: "transfer", amount: 40, currency: "TWD", flow_class: "internal", description: "[記帳署] 代墊", status: "active", request_id: "bk-adv", created_by: "記帳署" },
+      { txn_id: "A", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "餐飲", amount: -80, currency: "TWD", flow_class: "external", description: "早餐", status: "active", request_id: "bk-1", created_by: "bot" },
+      { txn_id: "G", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "餐飲", amount: -5, currency: "TWD", flow_class: "external", status: "void", voided_at: "2026-11-02T00:00:00.000Z", request_id: "bk-void2", created_by: "記帳署" },
+      { txn_id: "H", date: "2026-11-02", account_id: "ACC-1", txn_type: "expense", category: "餐飲", amount: -8, currency: "TWD", flow_class: "external", description: "已記住", status: "active", request_id: "bk-known", created_by: "記帳署" }
+    ];
+    var identified = externalLedgerRows(identityRows, { rememberedTxnIds: ["H"], accountIds: ["ACC-1"] });
+    var identifiedIds = identified.map(function (row) { return row.txnId; });
+    var byTxn = {};
+    identified.forEach(function (row) { byTxn[row.txnId] = row; });
+    check("記帳署身份", identified.length === 4 && identifiedIds.join(",") === "A,B,C,D" && byTxn.A.bookkeeping === true && byTxn.A.pfExternal === true && byTxn.B.bookkeeping === true && byTxn.B.createdBy === "記帳署" && byTxn.C.bookkeeping === true && byTxn.C.memo.indexOf("[記帳署]") === 0 && byTxn.D.bookkeeping === false && byTxn.D.pfExternal === true && byTxn.D.externalTitle === "購物" && !identified.some(function (row) { return row.txnId === "E" || row.txnId === "F" || row.txnId === "G" || row.txnId === "H"; }), JSON.stringify(identified));
+    var arHidden = externalLedgerRows([
+      { txn_id: "AR1", date: "2026-11-02", account_id: AR_FRIENDS, txn_type: "transfer_in", category: "transfer", amount: 40, currency: "TWD", flow_class: "internal", description: "代墊腿", status: "active", request_id: "bk-ar", created_by: "記帳署" },
+      { txn_id: "AR2", date: "2026-11-02", account_id: AR_FRIENDS, txn_type: "expense", category: "餐飲", amount: -40, currency: "TWD", flow_class: "external", description: "[記帳署] 朋友的份", status: "active", request_id: "bk-ar2", created_by: "記帳署" }
+    ], { accountIds: payAccounts([{ account_id: "ACC-1", name: "現金", type: "cash_wallet", currency: "TWD", status: "active" }, { account_id: AR_FRIENDS, name: AR_FRIENDS_NAME, type: "asset", currency: "TWD", status: "active" }]).map(function (account) { return account.id; }) });
+    check("代墊應收不進明細", arHidden.length === 0 && !payAccounts([{ account_id: AR_FRIENDS, name: AR_FRIENDS_NAME, type: "asset", currency: "TWD", status: "active" }]).length, JSON.stringify(arHidden));
+    var spendCats = [
+      { id: "food", level: "1", name: "餐費" },
+      { id: "lunch", level: "2", parentId: "food", name: "午餐" },
+      { id: "traffic", level: "1", name: "交通費" },
+      { id: "mrt", level: "2", parentId: "traffic", name: "捷運" },
+      { id: "weird", level: "1", name: "沒對到的類" }
+    ];
+    var spendRows = [
+      { uid: "local-food", type: "expense", amount: 100, date: "2026-11-03", class1: "food", class2: "lunch", accountId: "cash" },
+      { uid: "local-mrt", type: "expense", amount: 40, date: "2026-11-04", class1: "traffic", class2: "mrt", accountId: "cash" },
+      { uid: "local-weird", type: "expense", amount: 50, date: "2026-11-05", class1: "weird", accountId: "cash" },
+      { uid: "pf:TRIP", txnId: "TRIP", type: "expense", amount: 200, date: "2026-11-06", accountId: "ACC-CC", bookkeeping: true, pfExternal: true, pfCategory: "旅遊", externalTitle: "旅遊" },
+      { uid: "pf:FEE", txnId: "FEE", type: "expense", amount: 15, date: "2026-11-07", accountId: "ACC-CC", bookkeeping: true, pfExternal: true, pfCategory: "手續費", externalTitle: "手續費" },
+      { uid: "pf:TRIP", txnId: "TRIP", type: "expense", amount: 200, date: "2026-11-06", accountId: "ACC-CC", bookkeeping: true, pfCategory: "旅遊" },
+      { uid: "echo", txnId: "ONCE", type: "expense", amount: 30, date: "2026-11-08", accountId: "book", bookkeeping: true, pfExternal: true, pfCategory: "書報文具" },
+      { uid: "echo-2", txnId: "ONCE", type: "expense", amount: 999, date: "2026-11-08", accountId: "book", bookkeeping: true, pfCategory: "書報文具" },
+      { uid: "salary", type: "income", amount: 5000, date: "2026-11-05", class1: "salary", accountId: "cash" },
+      { uid: "old", type: "expense", amount: 999, date: "2026-10-31", class1: "food", class2: "lunch", accountId: "cash" }
+    ];
+    var spend = monthSpending(spendRows, "2026-11", spendCats);
+    var spendMap = {};
+    spend.categories.forEach(function (row) { spendMap[row.name] = row.amount; });
+    var accountMap = {};
+    spend.accounts.forEach(function (row) { accountMap[row.accountId] = row.amount; });
+    check("月統計一次", spend.once === true && spend.total === 435 && spend.count === 6 && spend.categories.length === 17 && spend.categories[0].name === "餐飲" && spend.categories[16].name === "其他" && spendMap["餐飲"] === 100 && spendMap["交通"] === 40 && spendMap["旅遊"] === 200 && spendMap["書報文具"] === 30 && spendMap["其他"] === 65 && spendMap["寵物"] === 0 && accountMap.cash === 190 && accountMap["ACC-CC"] === 215 && accountMap.book === 30 && spendCategory(spendRows[0], spendCats) === "餐飲" && spendCategory(spendRows[3], spendCats) === "旅遊" && spendCategory(spendRows[4], spendCats) === "其他", JSON.stringify(spend));
+    var cards = creditCardBalances({
+      ok: true,
+      balances: [
+        { account_id: "ACC-CC-1", name: "富邦世界", type: "credit_card", currency: "TWD", status: "active", balance: -3200, balance_twd: -3200 },
+        { account_id: "ACC-CC-OLD", name: "舊卡", type: "credit_card", currency: "TWD", status: "closed", balance: -100 },
+        { account_id: "ACC-BANK", name: "活存", type: "bank_cash", currency: "TWD", status: "active", balance: 5000 },
+        { account_id: "ACC-CC-OVER", name: "溢繳卡", type: "credit_card", currency: "TWD", status: "active", balance: 80 },
+        { account_id: "ACC-CC-G", name: "集團", type: "credit_card", is_group: true, status: "active", balance: -1 },
+        { account_id: "ACC-CC-USD", name: "美元卡", type: "credit_card", currency: "USD", status: "active", balance: -10, balance_twd: -320 }
+      ]
+    });
+    check("信用卡未繳", cards.length === 3 && cards[0].accountId === "ACC-CC-1" && cards[0].unpaid === 3200 && cards[0].credit === 0 && cards[1].accountId === "ACC-CC-USD" && cards[1].unpaid === 320 && cards[1].currency === "TWD" && cards[2].accountId === "ACC-CC-OVER" && cards[2].unpaid === 0 && cards[2].credit === 80, JSON.stringify(cards));
+    check("明細快取 30 分鐘", EXTERNAL_TTL_MS === 30 * 60 * 1000 && externalCacheFresh(1000, 1000 + EXTERNAL_TTL_MS - 1) && !externalCacheFresh(1000, 1000 + EXTERNAL_TTL_MS) && !externalCacheFresh("", 1000) && accountCacheFresh(1000, 1000 + 31 * 60 * 1000) && ACCOUNT_TTL_MS === 12 * 60 * 60 * 1000);
 
     return { ok: cases.every(function (item) { return item.ok; }), cases: cases };
   }
@@ -1317,8 +1509,10 @@
     shouldRetryPost: shouldRetryPost,
     retryDelayMs: retryDelayMs,
     accountCacheFresh: accountCacheFresh,
+    externalCacheFresh: externalCacheFresh,
     PF_GET_TIMEOUT_MS: PF_GET_TIMEOUT_MS,
     ACCOUNT_TTL_MS: ACCOUNT_TTL_MS,
+    EXTERNAL_TTL_MS: EXTERNAL_TTL_MS,
     explainError: explainError,
     permanentRejection: permanentRejection,
     migrateStuckReplace: migrateStuckReplace,
@@ -1326,6 +1520,9 @@
     salarySyncable: salarySyncable,
     stampSalaryEdit: stampSalaryEdit,
     externalLedgerRows: externalLedgerRows,
+    spendCategory: spendCategory,
+    monthSpending: monthSpending,
+    creditCardBalances: creditCardBalances,
     txnIdFromResponse: txnIdFromResponse,
     queueWrite: queueWrite,
     queueVoid: queueVoid,
